@@ -1,0 +1,527 @@
+import React, { useState } from 'react';
+import { useAttendance } from '../../context/AttendanceContext';
+import {
+  QrCode, GraduationCap, ShieldCheck, UserCheck, RotateCcw, Radio,
+  Bell, HelpCircle, Calculator, X, Plus, Clock, CheckCircle2, AlertCircle,
+  TrendingUp, Users,
+} from 'lucide-react';
+import { CorrectionRequestModal } from '../student/CorrectionRequestModal';
+import { Badge } from '../common/Badge';
+import { calculateAttendanceMetrics } from '../../utils/attendanceCalc';
+import { ProgressBar } from '../common/ProgressBar';
+
+interface NavbarProps {
+  onOpenLiveSession?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
+  const {
+    currentRole,
+    currentUser,
+    currentStudent,
+    switchUser,
+    activeSession,
+    classes,
+    subjects,
+    announcements,
+    correctionRequests,
+    minAttendanceThreshold,
+    getStudentStats,
+    resetToDefaultData,
+    students,
+    facultyList,
+  } = useAttendance();
+
+  const [activeDropdown, setActiveDropdown] = useState<'NONE' | 'ANNOUNCEMENTS' | 'REQUESTS' | 'CALCULATOR'>('NONE');
+  const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+
+  // Calculator simulation state
+  const [calcThreshold, setCalcThreshold] = useState<number>(minAttendanceThreshold || 0.75);
+  const [calcBonusPresent, setCalcBonusPresent] = useState<number>(0);
+  const [calcBonusMissed, setCalcBonusMissed] = useState<number>(0);
+  const [calcStudentId, setCalcStudentId] = useState<string>('');
+
+  const activeClass = activeSession ? classes.find((c) => c.id === activeSession.class_id) : null;
+  const activeSubject = activeClass ? subjects.find((s) => s.id === activeClass.subject_id) : null;
+
+  // Student specific requests or all pending requests
+  const studentRequests = currentStudent
+    ? correctionRequests.filter((r) => r.student_id === currentStudent.id)
+    : [];
+
+  const pendingRequestsCount = currentRole === 'STUDENT'
+    ? studentRequests.filter((r) => r.status === 'PENDING').length
+    : correctionRequests.filter((r) => r.status === 'PENDING').length;
+
+  // Overall stats for faculty calculator simulation
+  const targetStudent = students.find((s) => s.id === calcStudentId) || (currentStudent || students[0]);
+  const studentStats = targetStudent ? getStudentStats(targetStudent.id).overall : null;
+  const basePresent = studentStats?.total_present ?? 30;
+  const baseConducted = studentStats?.total_conducted ?? 36;
+
+  const simPresent = Math.max(0, basePresent + calcBonusPresent);
+  const simConducted = Math.max(simPresent, baseConducted + calcBonusPresent + calcBonusMissed);
+  const calcMetrics = calculateAttendanceMetrics(simPresent, simConducted, calcThreshold);
+
+  const toggleDropdown = (type: 'ANNOUNCEMENTS' | 'REQUESTS' | 'CALCULATOR') => {
+    setActiveDropdown((prev) => (prev === type ? 'NONE' : type));
+  };
+
+  const closeDropdown = () => setActiveDropdown('NONE');
+
+  return (
+    <>
+      {activeDropdown !== 'NONE' && (
+        <div className="nav-popover-backdrop" onClick={closeDropdown} />
+      )}
+
+      <header className="navbar">
+        <div className="nav-content">
+          {/* Brand */}
+          <div className="brand-section">
+            <div className="brand-icon-wrapper">
+              <QrCode size={17} />
+            </div>
+            <div>
+              <div className="brand-title">AttendPulse</div>
+            </div>
+          </div>
+
+          {/* Live session indicator (Faculty & Admin only — students shouldn't see faculty controls) */}
+          {activeSession && currentRole !== 'STUDENT' && (
+            <button
+              onClick={onOpenLiveSession}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '0.5rem',
+                padding: '0.3rem 0.75rem',
+                background: 'var(--green-light)',
+                border: '1px solid var(--green-border)',
+                borderRadius: 'var(--radius-full)',
+                color: 'var(--green)', cursor: 'pointer',
+                fontSize: '0.75rem', fontWeight: 600,
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              <span className="pulse-indicator" />
+              <Radio size={13} />
+              <span>Live: {activeSubject?.name || 'Class'} • {activeClass?.division}</span>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 2 }}>View →</span>
+            </button>
+          )}
+
+          {/* Role switcher */}
+          <div className="role-switcher-container">
+            {[
+              { role: 'STUDENT' as const, label: 'Student', Icon: GraduationCap, userId: 'usr-stu-1' },
+              { role: 'FACULTY' as const, label: 'Faculty', Icon: UserCheck, userId: 'usr-fac-1' },
+              { role: 'ADMIN' as const, label: 'Admin', Icon: ShieldCheck, userId: 'usr-admin' },
+            ].map(({ role, label, Icon, userId }) => (
+              <button
+                key={role}
+                className={`role-btn${currentRole === role ? ' active' : ''}`}
+                onClick={() => {
+                  closeDropdown();
+                  switchUser(role, userId);
+                }}
+              >
+                <Icon size={13} />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Right side actions */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+            {/* Persona selector */}
+            {currentRole === 'STUDENT' && (
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 'auto', maxWidth: 280 }}
+                value={currentUser.id}
+                onChange={(e) => switchUser('STUDENT', e.target.value)}
+                title="Switch Student Profile"
+              >
+                {[
+                  { name: 'Semester 3 · Division A', list: students.filter((s) => s.semester === 3 && s.division === 'A') },
+                  { name: 'Semester 3 · Division B', list: students.filter((s) => s.semester === 3 && s.division === 'B') },
+                  { name: 'Semester 5 · Division A', list: students.filter((s) => s.semester === 5 && s.division === 'A') },
+                ].map((grp) => (
+                  <optgroup key={grp.name} label={grp.name}>
+                    {grp.list.map((s) => {
+                      const stats = getStudentStats(s.id).overall;
+                      const pct = stats.percentage;
+                      const isLow = pct < (minAttendanceThreshold * 100);
+                      return (
+                        <option key={s.id} value={s.user_id}>
+                          {s.roll_number}. {s.name} — {pct}% {isLow ? '⚠' : '✓'}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                ))}
+              </select>
+            )}
+            {currentRole === 'FACULTY' && (
+              <select
+                className="form-select form-select-sm"
+                style={{ width: 'auto', maxWidth: 280 }}
+                value={currentUser.id}
+                onChange={(e) => switchUser('FACULTY', e.target.value)}
+                title="Switch Faculty Profile"
+              >
+                {facultyList.map((f) => {
+                  const assignedCount = classes.filter((c) => c.faculty_id === f.id).length;
+                  return (
+                    <option key={f.id} value={f.user_id}>
+                      {f.name} — {f.designation} ({assignedCount} classes)
+                    </option>
+                  );
+                })}
+              </select>
+            )}
+
+            {/* Attendance Calculator Tool - Exclusively Available to Faculty */}
+            {currentRole === 'FACULTY' && (
+              <div className="nav-icon-group">
+                <button
+                  className={`nav-icon-btn${activeDropdown === 'CALCULATOR' ? ' active' : ''}`}
+                  onClick={() => toggleDropdown('CALCULATOR')}
+                  title="Attendance Goal Calculator"
+                  aria-label="Attendance Goal Calculator"
+                >
+                  <Calculator size={16} />
+                </button>
+
+                {activeDropdown === 'CALCULATOR' && (
+                  <div className="nav-popover" style={{ width: 360 }}>
+                    <div className="nav-popover-header">
+                      <div className="nav-popover-title">
+                        <Calculator size={16} color="var(--blue-600)" />
+                        <span>Attendance Goal Calculator</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                        <select
+                          className="form-select form-select-sm"
+                          style={{ width: 'auto' }}
+                          value={calcThreshold}
+                          onChange={(e) => setCalcThreshold(parseFloat(e.target.value))}
+                        >
+                          <option value={0.70}>70% target</option>
+                          <option value={0.75}>75% required</option>
+                          <option value={0.80}>80% target</option>
+                          <option value={0.85}>85% target</option>
+                        </select>
+                        <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem' }} onClick={closeDropdown}>
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="nav-popover-body">
+                      {/* Faculty Student Roster Selector */}
+                      {students.length > 0 && (
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <label className="form-label" style={{ fontSize: '0.6875rem', marginBottom: '0.25rem', color: 'var(--gray-500)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <Users size={12} color="var(--blue-600)" /> Select Student to Simulate
+                          </label>
+                          <select
+                            className="form-select form-select-sm"
+                            value={targetStudent?.id || ''}
+                            onChange={(e) => {
+                              setCalcStudentId(e.target.value);
+                              setCalcBonusPresent(0);
+                              setCalcBonusMissed(0);
+                            }}
+                          >
+                            {students.map((stu) => {
+                              const sStats = getStudentStats(stu.id).overall;
+                              return (
+                                <option key={stu.id} value={stu.id}>
+                                  {stu.name} ({stu.roll_number}) — {sStats.percentage}% (Sem {stu.semester}{stu.division})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      )}
+                    {/* Metrics Banner */}
+                    <div
+                      style={{
+                        padding: '0.875rem',
+                        borderRadius: 'var(--r-md)',
+                        background: calcMetrics.isLowAttendance ? 'var(--red-50)' : 'var(--green-50)',
+                        border: `1px solid ${calcMetrics.isLowAttendance ? 'var(--red-200)' : 'var(--green-200)'}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.375rem' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: calcMetrics.isLowAttendance ? 'var(--red-600)' : 'var(--green-600)' }}>
+                          {calcMetrics.isLowAttendance ? '⚠ Needs Catch-up' : '✓ Eligible & On Track'}
+                        </span>
+                        <span style={{ fontSize: '1.25rem', fontWeight: 800, color: calcMetrics.isLowAttendance ? 'var(--red-600)' : 'var(--green-600)' }}>
+                          {calcMetrics.percentage}%
+                        </span>
+                      </div>
+                      <ProgressBar value={calcMetrics.percentage} threshold={calcThreshold * 100} />
+                      <div style={{ fontSize: '0.75rem', color: 'var(--gray-700)', marginTop: '0.5rem', lineHeight: 1.4 }}>
+                        {calcMetrics.message}
+                      </div>
+                    </div>
+
+                    {/* Stats display */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <div style={{ padding: '0.625rem', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 'var(--r-sm)' }}>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--gray-400)' }}>Attended / Total</div>
+                        <div style={{ fontWeight: 800, fontSize: '0.9375rem', color: 'var(--gray-900)', marginTop: 2 }}>
+                          {simPresent} / {simConducted}
+                        </div>
+                      </div>
+                      <div style={{ padding: '0.625rem', background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 'var(--r-sm)' }}>
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--gray-400)' }}>
+                          {calcMetrics.isLowAttendance ? 'Needed to reach 75%' : 'Safe to Miss'}
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: '0.9375rem', color: calcMetrics.isLowAttendance ? 'var(--red-600)' : 'var(--green-600)', marginTop: 2 }}>
+                          {calcMetrics.isLowAttendance ? `${calcMetrics.requiredAttend} classes` : `${calcMetrics.safeMisses} classes`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* What-If Simulator Buttons */}
+                    <div>
+                      <div style={{ fontSize: '0.6875rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--gray-400)', letterSpacing: '0.05em', marginBottom: '0.375rem' }}>
+                        Simulate Upcoming Classes
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                          onClick={() => setCalcBonusPresent((p) => p + 1)}
+                        >
+                          +1 Attended
+                        </button>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          style={{ flex: 1, fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                          onClick={() => setCalcBonusMissed((m) => m + 1)}
+                        >
+                          +1 Missed
+                        </button>
+                        {(calcBonusPresent > 0 || calcBonusMissed > 0) && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            style={{ fontSize: '0.6875rem', padding: '0.25rem 0.5rem' }}
+                            onClick={() => {
+                              setCalcBonusPresent(0);
+                              setCalcBonusMissed(0);
+                            }}
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                      {(calcBonusPresent > 0 || calcBonusMissed > 0) && (
+                        <div style={{ fontSize: '0.6875rem', color: 'var(--blue-600)', marginTop: '0.375rem', fontWeight: 500 }}>
+                          Simulating +{calcBonusPresent} attended and +{calcBonusMissed} missed
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+            {/* Icon: Correction / Dispute Requests */}
+            <div className="nav-icon-group">
+              <button
+                className={`nav-icon-btn${activeDropdown === 'REQUESTS' ? ' active' : ''}`}
+                onClick={() => toggleDropdown('REQUESTS')}
+                title="Disputes & Correction Requests"
+                aria-label="Disputes & Correction Requests"
+              >
+                <HelpCircle size={16} />
+                {pendingRequestsCount > 0 && (
+                  <span className="nav-badge nav-badge-amber">
+                    {pendingRequestsCount}
+                  </span>
+                )}
+              </button>
+
+              {activeDropdown === 'REQUESTS' && (
+                <div className="nav-popover">
+                  <div className="nav-popover-header">
+                    <div className="nav-popover-title">
+                      <HelpCircle size={16} color="var(--blue-600)" />
+                      <span>{currentRole === 'STUDENT' ? 'My Disputes & Requests' : 'Pending Requests'}</span>
+                      <span style={{ fontSize: '0.6875rem', padding: '0.1rem 0.4rem', borderRadius: 'var(--r-full)', background: 'var(--gray-200)', color: 'var(--gray-700)', fontWeight: 600 }}>
+                        {currentRole === 'STUDENT' ? studentRequests.length : correctionRequests.length}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                      {currentRole === 'STUDENT' && (
+                        <button
+                          className="btn btn-sm btn-primary"
+                          style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', height: 26 }}
+                          onClick={() => {
+                            closeDropdown();
+                            setIsCorrectionModalOpen(true);
+                          }}
+                        >
+                          <Plus size={12} /> New
+                        </button>
+                      )}
+                      <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem' }} onClick={closeDropdown}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="nav-popover-body">
+                    {currentRole === 'STUDENT' ? (
+                      studentRequests.length === 0 ? (
+                        <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--gray-400)', fontSize: '0.8125rem' }}>
+                          <CheckCircle2 size={24} style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
+                          No requests submitted yet.
+                        </div>
+                      ) : (
+                        studentRequests.map((req) => (
+                          <div key={req.id} className="nav-popover-item">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--gray-900)' }}>
+                                {req.subject_name}
+                              </span>
+                              <Badge status={req.status} />
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--gray-600)', lineHeight: 1.4 }}>
+                              "{req.reason}"
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.375rem', fontSize: '0.6875rem', color: 'var(--gray-400)' }}>
+                              <span>Date: {req.date}</span>
+                              {req.faculty_comment && (
+                                <span style={{ color: 'var(--green-600)', fontWeight: 600 }}>
+                                  → {req.faculty_comment}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )
+                    ) : (
+                      // Faculty / Admin view
+                      correctionRequests.length === 0 ? (
+                        <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--gray-400)', fontSize: '0.8125rem' }}>
+                          All requests reviewed!
+                        </div>
+                      ) : (
+                        correctionRequests.slice(0, 5).map((req) => (
+                          <div key={req.id} className="nav-popover-item">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
+                              <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--gray-900)' }}>
+                                {req.student_name}
+                              </span>
+                              <Badge status={req.status} />
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--gray-700)' }}>
+                              {req.subject_name} · {req.date}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: 2, fontStyle: 'italic' }}>
+                              "{req.reason}"
+                            </div>
+                          </div>
+                        ))
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Icon: Announcements */}
+            <div className="nav-icon-group">
+              <button
+                className={`nav-icon-btn${activeDropdown === 'ANNOUNCEMENTS' ? ' active' : ''}`}
+                onClick={() => toggleDropdown('ANNOUNCEMENTS')}
+                title="Announcements"
+                aria-label="Announcements"
+              >
+                <Bell size={16} />
+                {announcements.length > 0 && (
+                  <span className="nav-badge">
+                    {announcements.length}
+                  </span>
+                )}
+              </button>
+
+              {activeDropdown === 'ANNOUNCEMENTS' && (
+                <div className="nav-popover">
+                  <div className="nav-popover-header">
+                    <div className="nav-popover-title">
+                      <Bell size={16} color="var(--blue-600)" />
+                      <span>Announcements</span>
+                      <span style={{ fontSize: '0.6875rem', padding: '0.1rem 0.4rem', borderRadius: 'var(--r-full)', background: 'var(--gray-200)', color: 'var(--gray-700)', fontWeight: 600 }}>
+                        {announcements.length}
+                      </span>
+                    </div>
+                    <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem' }} onClick={closeDropdown}>
+                      <X size={14} />
+                    </button>
+                  </div>
+
+                  <div className="nav-popover-body">
+                    {announcements.map((ann) => (
+                      <div
+                        key={ann.id}
+                        className="nav-popover-item"
+                        style={{ borderLeft: '3px solid var(--blue-500)' }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                          <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--gray-900)' }}>
+                            {ann.title}
+                          </span>
+                          <span style={{ fontSize: '0.625rem', padding: '0.1rem 0.35rem', borderRadius: 'var(--r-sm)', background: 'var(--blue-50)', color: 'var(--blue-600)', fontWeight: 700 }}>
+                            {ann.category}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--gray-600)', lineHeight: 1.45, margin: 0 }}>
+                          {ann.content}
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.375rem', fontSize: '0.6875rem', color: 'var(--gray-400)' }}>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <Clock size={10} /> {ann.date}
+                          </span>
+                          <span>{ann.author}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Profile badge */}
+            <div className="user-profile-badge">
+              <div className="avatar-circle">
+                {currentUser.name.split(' ').map(n => n[0]).slice(0, 2).join('')}
+              </div>
+              <div className="user-info">
+                <span className="user-name">{currentUser.name}</span>
+                <span className="user-role-label">{currentRole.toLowerCase()}</span>
+              </div>
+            </div>
+
+            {/* Reset button */}
+            <button className="btn-reset-demo" onClick={resetToDefaultData} title="Reset demo data">
+              <RotateCcw size={12} />
+              Reset
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Modal for new request if triggered from navbar */}
+      <CorrectionRequestModal
+        isOpen={isCorrectionModalOpen}
+        onClose={() => setIsCorrectionModalOpen(false)}
+      />
+    </>
+  );
+};

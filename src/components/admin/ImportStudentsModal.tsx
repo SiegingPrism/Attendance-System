@@ -1,0 +1,401 @@
+import React, { useState, useRef } from 'react';
+import * as XLSX from 'xlsx';
+import { useAttendance } from '../../context/AttendanceContext';
+import {
+  X, Upload, FileSpreadsheet, Download, CheckCircle2,
+  AlertTriangle, ArrowRight, RefreshCw, FileText,
+} from 'lucide-react';
+
+interface ImportStudentsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+interface ParsedStudentRow {
+  name: string;
+  roll_number: string;
+  email?: string;
+  enrollment_number?: string;
+  semester?: number;
+  division?: string;
+  department_id?: string;
+  isValid: boolean;
+  error?: string;
+}
+
+export const ImportStudentsModal: React.FC<ImportStudentsModalProps> = ({ isOpen, onClose }) => {
+  const { importStudents } = useAttendance();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string>('');
+  const [parsedRows, setParsedRows] = useState<ParsedStudentRow[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{ added: number; updated: number } | null>(null);
+
+  if (!isOpen) return null;
+
+  const handleDownloadSample = () => {
+    const csvContent =
+      'Roll Number,Name,Email,Enrollment ID,Semester,Division,Department\n' +
+      '15,Aditi Sharma,aditi.s@student.college.edu,EN202415,3,A,Computer Engineering\n' +
+      '16,Rahul Nair,rahul.n@student.college.edu,EN202416,3,A,Computer Engineering\n' +
+      '17,Kavya Patil,kavya.p@student.college.edu,EN202417,3,A,Computer Engineering\n' +
+      '18,Siddharth Rao,siddharth.r@student.college.edu,EN202418,3,A,Computer Engineering\n' +
+      '19,Meera Joshi,meera.j@student.college.edu,EN202419,3,A,Computer Engineering\n';
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'students_import_template.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const processFile = (file: File) => {
+    setParseError(null);
+    setImportResult(null);
+    setFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+        if (!rawRows || rawRows.length === 0) {
+          setParseError('The uploaded file contains no data rows.');
+          setParsedRows([]);
+          return;
+        }
+
+        const normalized: ParsedStudentRow[] = rawRows.map((row) => {
+          // Normalize case-insensitive keys
+          const keys = Object.keys(row);
+          const getVal = (patterns: string[]) => {
+            for (const key of keys) {
+              const cleanKey = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+              for (const p of patterns) {
+                if (cleanKey === p.toLowerCase().replace(/[^a-z0-9]/g, '')) {
+                  return String(row[key] || '').trim();
+                }
+              }
+            }
+            return '';
+          };
+
+          const name = getVal(['name', 'studentname', 'fullname', 'student_name']);
+          const roll_number = getVal(['rollnumber', 'rollno', 'roll', 'roll_number']);
+          const email = getVal(['email', 'studentemail', 'emailaddress', 'email_address']);
+          const enrollment_number = getVal(['enrollmentid', 'enrollmentno', 'enrollmentnumber', 'enrollment']);
+          const semStr = getVal(['semester', 'sem']);
+          const division = getVal(['division', 'div', 'section']) || 'A';
+          const dept = getVal(['department', 'dept', 'departmentid']) || 'dept-ce';
+
+          const sem = parseInt(semStr, 10) || 3;
+          const isValid = !!name && !!roll_number;
+          const error = !name ? 'Missing Name' : !roll_number ? 'Missing Roll Number' : undefined;
+
+          return {
+            name,
+            roll_number,
+            email: email || `${name.toLowerCase().replace(/\s+/g, '.')}@student.college.edu`,
+            enrollment_number: enrollment_number || `EN2024${roll_number.padStart(2, '0')}`,
+            semester: sem,
+            division: division.toUpperCase(),
+            department_id: dept,
+            isValid,
+            error,
+          };
+        });
+
+        setParsedRows(normalized);
+      } catch (err: any) {
+        setParseError(`Failed to parse file: ${err.message || 'Invalid format'}`);
+        setParsedRows([]);
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
+  };
+
+  const handleConfirmImport = () => {
+    const validRows = parsedRows.filter((r) => r.isValid);
+    if (validRows.length === 0) return;
+
+    const result = importStudents(validRows);
+    setImportResult(result);
+  };
+
+  const validCount = parsedRows.filter((r) => r.isValid).length;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-content"
+        style={{ maxWidth: 640 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 'var(--r-md)',
+                background: 'var(--blue-50)',
+                color: 'var(--blue-600)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <FileSpreadsheet size={20} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--gray-900)' }}>
+                Import Students from CSV / Excel
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)' }}>
+                Upload a spreadsheet to bulk register or update students in the registry
+              </div>
+            </div>
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Success Alert */}
+        {importResult ? (
+          <div style={{ padding: '2rem 1rem', textAlign: 'center' }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: 'var(--r-full)',
+                background: 'var(--green-50)',
+                color: 'var(--green-600)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 1rem',
+              }}
+            >
+              <CheckCircle2 size={32} />
+            </div>
+            <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--gray-900)' }}>
+              Import Completed Successfully!
+            </div>
+            <p style={{ fontSize: '0.875rem', color: 'var(--gray-600)', marginTop: 6, lineHeight: 1.5 }}>
+              Registered <strong>{importResult.added} new student(s)</strong> and updated <strong>{importResult.updated} existing record(s)</strong> in the database.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setImportResult(null);
+                  setParsedRows([]);
+                  setFileName('');
+                }}
+              >
+                Upload Another File
+              </button>
+              <button className="btn btn-primary" onClick={onClose}>
+                Done & View Registry
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Template action row */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.75rem 1rem',
+                background: 'var(--gray-50)',
+                border: '1px solid var(--gray-200)',
+                borderRadius: 'var(--r-md)',
+                marginBottom: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--gray-700)' }}>
+                <FileText size={15} color="var(--blue-600)" />
+                <span>Need the standard columns format?</span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-secondary btn-xs"
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                onClick={handleDownloadSample}
+              >
+                <Download size={12} /> Download Template (.csv)
+              </button>
+            </div>
+
+            {/* Dropzone */}
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                border: `2px dashed ${isDragging ? 'var(--blue-500)' : 'var(--gray-300)'}`,
+                borderRadius: 'var(--r-lg)',
+                padding: '2rem 1.5rem',
+                textAlign: 'center',
+                background: isDragging ? 'var(--blue-50)' : 'var(--white)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                marginBottom: '1rem',
+              }}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv, .xlsx, .xls, .tsv, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                style={{ display: 'none' }}
+                onChange={handleFileChange}
+              />
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 'var(--r-full)',
+                  background: 'var(--blue-50)',
+                  color: 'var(--blue-600)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 0.75rem',
+                }}
+              >
+                <Upload size={22} />
+              </div>
+              <div style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--gray-800)' }}>
+                {fileName ? fileName : 'Choose a file or drag & drop here'}
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--gray-400)', marginTop: 4 }}>
+                Supports CSV, Excel (.xlsx, .xls), or TSV files
+              </p>
+            </div>
+
+            {/* Parse Error */}
+            {parseError && (
+              <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>
+                <AlertTriangle size={15} style={{ flexShrink: 0 }} />
+                <span>{parseError}</span>
+              </div>
+            )}
+
+            {/* Parsed Preview Table */}
+            {parsedRows.length > 0 && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--gray-800)' }}>
+                    Preview: {validCount} valid / {parsedRows.length} total rows detected
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-xs"
+                    onClick={() => {
+                      setParsedRows([]);
+                      setFileName('');
+                    }}
+                  >
+                    Clear & Re-upload
+                  </button>
+                </div>
+
+                <div className="table-scroll" style={{ maxHeight: 220 }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Roll</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Enrollment</th>
+                        <th>Sem</th>
+                        <th>Div</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedRows.slice(0, 15).map((row, i) => (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 700 }}>{row.roll_number || '—'}</td>
+                          <td style={{ fontWeight: 600 }}>{row.name || '—'}</td>
+                          <td style={{ color: 'var(--gray-500)', fontSize: '0.75rem' }}>{row.email}</td>
+                          <td style={{ color: 'var(--gray-400)', fontSize: '0.75rem' }}>{row.enrollment_number}</td>
+                          <td>{row.semester}</td>
+                          <td>{row.division}</td>
+                          <td>
+                            {row.isValid ? (
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--green-600)', fontWeight: 700 }}>
+                                ✓ Ready
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.6875rem', color: 'var(--red-600)', fontWeight: 700 }}>
+                                ⚠ {row.error}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {parsedRows.length > 15 && (
+                  <div style={{ fontSize: '0.6875rem', color: 'var(--gray-400)', marginTop: 4, textAlign: 'right' }}>
+                    + {parsedRows.length - 15} more rows will be imported
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.625rem', paddingTop: '0.875rem', borderTop: '1px solid var(--gray-200)' }}>
+              <button type="button" className="btn btn-secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={validCount === 0}
+                onClick={handleConfirmImport}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+              >
+                <span>Confirm &amp; Import {validCount > 0 ? `(${validCount})` : ''}</span>
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
