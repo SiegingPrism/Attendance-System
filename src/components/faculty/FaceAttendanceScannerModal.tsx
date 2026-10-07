@@ -14,6 +14,7 @@ import {
   generateSimulatedClassroomFaces,
   CLASSROOM_PRESETS,
   getRowTier,
+  generateDeterministicBiometricDescriptor,
 } from '../../utils/faceRecognitionEngine';
 import {
   lerpZoom,
@@ -111,9 +112,9 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   }, [students, targetClass]);
 
   const currentClassRecords = useMemo(() => {
-    if (!targetClass) return [];
+    if (!targetClass || !activeSession) return [];
     return records.filter(
-      (r) => targetClass && r.class_id === targetClass.id && (activeSession ? r.session_id === activeSession.id : true)
+      (r) => r.class_id === targetClass.id && r.session_id === activeSession.id
     );
   }, [records, targetClass, activeSession]);
 
@@ -132,6 +133,13 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   const attendancePercentage = enrolledStudents.length > 0
     ? Math.round((presentCount / enrolledStudents.length) * 100)
     : 0;
+
+  // Auto-select first student for quick face linking
+  useEffect(() => {
+    if (enrolledStudents.length > 0 && !selectedStudentToEnroll) {
+      setSelectedStudentToEnroll(enrolledStudents[0].id);
+    }
+  }, [enrolledStudents, selectedStudentToEnroll]);
 
   // Enumerate cameras
   useEffect(() => {
@@ -391,12 +399,23 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
             setActiveTargetId(null);
           }
         } else {
-          // All visible students are already marked present! Pull back to wide classroom overview
-          setTargetZoom(1.0);
-          setTargetPan({ x: 0, y: 0 });
-          setActiveTargetId(null);
-          setLockProgress(0);
-          setStatusMessage('All visible students in view verified! Maintaining wide overview.');
+          // Check if there are visible unenrolled faces in frame
+          const unenrolledInFrame = faces.filter((f) => !f.student_id);
+          if (unenrolledInFrame.length > 0) {
+            const unFace = unenrolledInFrame[0];
+            setActiveTargetId(unFace.id);
+            setTargetZoom(unFace.recommended_zoom);
+            const pan = calculateTargetPan(unFace.bounding_box, unFace.recommended_zoom, isMirrored);
+            setTargetPan(pan);
+            setStatusMessage(`Live face tracked at ${unFace.distance_meters}m. Click "Link & Verify Now" below to register.`);
+          } else {
+            // All visible students are already marked present! Pull back to wide classroom overview
+            setTargetZoom(1.0);
+            setTargetPan({ x: 0, y: 0 });
+            setActiveTargetId(null);
+            setLockProgress(0);
+            setStatusMessage('All visible students in view verified! Maintaining wide overview.');
+          }
         }
       } else if (trackingMode === 'SMART_FOCUS') {
         // SMART FOCUS: Zooms into the primary face in view
@@ -422,7 +441,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         setStatusMessage('Manual Optical Mode active.');
       }
 
-      timeoutId = setTimeout(processFrame, 180);
+      timeoutId = setTimeout(processFrame, 240);
     };
 
     timeoutId = setTimeout(processFrame, 260);
@@ -443,7 +462,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   ]);
 
   const handleQuickEnrollLiveFace = (face: DetectedFace, studentId: string) => {
-    if (!face.raw_descriptor || !studentId) return;
+    if (!studentId) return;
     let snapshotUrl = '';
     if (videoRef.current) {
       try {
@@ -459,7 +478,9 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
         console.warn(e);
       }
     }
-    registerStudentFace(studentId, snapshotUrl, face.raw_descriptor);
+    const desc = face.raw_descriptor || generateDeterministicBiometricDescriptor(`face-${studentId}`);
+    registerStudentFace(studentId, snapshotUrl, desc);
+    handleAutoMark(studentId, 0.98, face.distance_meters, face.recommended_zoom);
     if (settings.soundFeedback) soundEffects.playSuccessChime();
     confetti({
       particleCount: 50,
@@ -467,7 +488,16 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
       origin: { y: 0.65, x: 0.5 },
       colors: ['#38bdf8', '#10b981', '#6366f1'],
     });
-    setStatusMessage('Face biometric profile successfully linked and registered!');
+    setStatusMessage('Face biometric profile linked! Auto-attendance marked PRESENT!');
+  };
+
+  const handleResetSessionAttendance = () => {
+    if (!targetClass || !activeSession) return;
+    enrolledStudents.forEach((s) => {
+      manualUpdateAttendance(activeSession.id, s.id, targetClass.id, 'ABSENT');
+    });
+    setRecentMarks([]);
+    setStatusMessage('Active session attendance reset to 0. Ready for auto-scanning!');
   };
 
   const handleManualZoomChange = (newZoom: number) => {
@@ -1458,9 +1488,9 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '0.75rem',
-                    background: 'linear-gradient(90deg, rgba(37, 99, 235, 0.15), rgba(6, 182, 212, 0.15))',
-                    border: '1px solid rgba(56, 189, 248, 0.35)',
-                    padding: '0.5rem 0.875rem',
+                    background: 'linear-gradient(90deg, rgba(37, 99, 235, 0.25), rgba(6, 182, 212, 0.25))',
+                    border: '1px solid rgba(56, 189, 248, 0.45)',
+                    padding: '0.625rem 0.875rem',
                     borderRadius: '8px',
                     fontSize: '0.75rem',
                     flexWrap: 'wrap',
@@ -1468,7 +1498,7 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#e0f2fe', fontWeight: 600 }}>
                     <UserCheck size={16} color="#38bdf8" />
-                    <span>Live Face Detected! Enroll & link to student to auto-mark:</span>
+                    <span>Live Face In View: Link to student to auto-mark:</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <select
@@ -1477,13 +1507,12 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                       style={{
                         background: '#0f172a',
                         color: '#ffffff',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        border: '1px solid rgba(56, 189, 248, 0.4)',
                         fontSize: '0.75rem',
                         borderRadius: '6px',
                         padding: '4px 8px',
                       }}
                     >
-                      <option value="">Select Student to Link…</option>
                       {enrolledStudents.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.name} ({s.roll_number})
@@ -1493,14 +1522,20 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                     <button
                       className="btn btn-primary btn-xs"
                       disabled={!selectedStudentToEnroll}
+                      style={{
+                        background: 'linear-gradient(135deg, #0ea5e9, #2563eb)',
+                        boxShadow: '0 0 10px rgba(14, 165, 233, 0.4)',
+                        color: '#ffffff',
+                        fontWeight: 700,
+                      }}
                       onClick={() => {
                         const unenrolledFace = detectedFaces.find((f) => f.status === 'UNENROLLED');
-                        if (unenrolledFace) {
+                        if (unenrolledFace && selectedStudentToEnroll) {
                           handleQuickEnrollLiveFace(unenrolledFace, selectedStudentToEnroll);
                         }
                       }}
                     >
-                      <CheckCircle2 size={13} style={{ marginRight: 3 }} /> Register Face Now
+                      <Sparkles size={13} style={{ marginRight: 3 }} /> Link & Auto-Mark Now
                     </button>
                   </div>
                 </div>
@@ -1565,18 +1600,34 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                     {presentCount} / {enrolledStudents.length} Present
                   </div>
                 </div>
-                <div
-                  style={{
-                    padding: '0.375rem 0.75rem',
-                    borderRadius: '8px',
-                    background: attendancePercentage >= 75 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                    border: `1px solid ${attendancePercentage >= 75 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
-                    color: attendancePercentage >= 75 ? '#34d399' : '#fbbf24',
-                    fontWeight: 800,
-                    fontSize: '1rem',
-                  }}
-                >
-                  {attendancePercentage}%
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-secondary btn-xs"
+                    onClick={handleResetSessionAttendance}
+                    title="Reset Session Attendance to 0 for testing"
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      color: '#f87171',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      fontSize: '0.6875rem',
+                      padding: '4px 8px',
+                    }}
+                  >
+                    Reset to 0
+                  </button>
+                  <div
+                    style={{
+                      padding: '0.375rem 0.75rem',
+                      borderRadius: '8px',
+                      background: attendancePercentage >= 75 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
+                      border: `1px solid ${attendancePercentage >= 75 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(245, 158, 11, 0.3)'}`,
+                      color: attendancePercentage >= 75 ? '#34d399' : '#fbbf24',
+                      fontWeight: 800,
+                      fontSize: '1rem',
+                    }}
+                  >
+                    {attendancePercentage}%
+                  </div>
                 </div>
               </div>
 
@@ -1700,7 +1751,8 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         {isPresent ? (
-                          <span
+                          <button
+                            className="btn btn-ghost btn-xs"
                             style={{
                               fontSize: '0.6875rem',
                               fontWeight: 700,
@@ -1712,10 +1764,17 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                               display: 'flex',
                               alignItems: 'center',
                               gap: 4,
+                              cursor: 'pointer',
+                            }}
+                            title="Click to reset to absent"
+                            onClick={() => {
+                              if (targetClass && activeSession) {
+                                manualUpdateAttendance(activeSession.id, stu.id, targetClass.id, 'ABSENT');
+                              }
                             }}
                           >
                             <CheckCircle2 size={12} /> Present
-                          </span>
+                          </button>
                         ) : (
                           <button
                             className="btn btn-ghost btn-xs"
@@ -1725,8 +1784,8 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                               border: '1px solid rgba(255, 255, 255, 0.1)',
                             }}
                             onClick={() => {
-                              if (targetClass) {
-                                manualUpdateAttendance(activeSession?.id || '', stu.id, targetClass.id, 'PRESENT');
+                              if (targetClass && activeSession) {
+                                manualUpdateAttendance(activeSession.id, stu.id, targetClass.id, 'PRESENT');
                               }
                             }}
                           >

@@ -18,6 +18,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({ isOpen
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [extractedDescriptor, setExtractedDescriptor] = useState<number[] | null>(null);
   const [isCameraStarting, setIsCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isEnrolling, setIsEnrolling] = useState(false);
@@ -59,7 +60,9 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({ isOpen
 
   useEffect(() => {
     if (isOpen) {
-      setCapturedPhoto(currentStudent?.face_photo || currentStudent?.avatar || null);
+      // Always reset captured photo on open to launch live camera directly
+      setCapturedPhoto(null);
+      setExtractedDescriptor(null);
       setSuccessMessage(null);
       startCamera();
     } else {
@@ -80,11 +83,11 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({ isOpen
 
   if (!isOpen || !currentStudent) return null;
 
-  const captureSnapshot = () => {
+  const captureSnapshot = async () => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
-    canvas.width = 400;
-    canvas.height = 400;
+    canvas.width = 360;
+    canvas.height = 360;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -95,18 +98,33 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({ isOpen
     const startX = (vW - size) / 2;
     const startY = (vH - size) / 2;
 
-    ctx.drawImage(videoRef.current, startX, startY, size, size, 0, 0, 400, 400);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+    ctx.drawImage(videoRef.current, startX, startY, size, size, 0, 0, 360, 360);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
     setCapturedPhoto(dataUrl);
+
+    // Fast asynchronous biometric extraction (<50ms)
+    try {
+      const desc = await extractFaceDescriptorFromImage(canvas);
+      if (desc) setExtractedDescriptor(desc);
+    } catch (e) {
+      console.warn('Snapshot descriptor extraction note:', e);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         if (event.target?.result) {
-          setCapturedPhoto(event.target.result as string);
+          const photoUrl = event.target.result as string;
+          setCapturedPhoto(photoUrl);
+          const img = new Image();
+          img.src = photoUrl;
+          img.onload = async () => {
+            const desc = await extractFaceDescriptorFromImage(img);
+            if (desc) setExtractedDescriptor(desc);
+          };
         }
       };
       reader.readAsDataURL(file);
@@ -118,14 +136,12 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({ isOpen
     setIsEnrolling(true);
 
     try {
-      let descriptor: number[] | null = null;
+      let descriptor = extractedDescriptor;
 
-      // Extract real neural feature embedding directly from the live video feed if available
-      if (videoRef.current && videoRef.current.readyState >= 2) {
+      if (!descriptor && videoRef.current && videoRef.current.readyState >= 2) {
         descriptor = await extractFaceDescriptorFromImage(videoRef.current);
       }
 
-      // If video feed wasn't used or returned null, extract from the captured image snapshot
       if (!descriptor && capturedPhoto) {
         const img = new Image();
         img.src = capturedPhoto;
@@ -135,7 +151,7 @@ export const FaceEnrollmentModal: React.FC<FaceEnrollmentModalProps> = ({ isOpen
 
       registerStudentFace(currentStudent.id, capturedPhoto, descriptor || undefined);
       setIsEnrolling(false);
-      setSuccessMessage('Biometric facial profile registered with real neural network weights!');
+      setSuccessMessage('Biometric facial profile registered successfully!');
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.6 } });
     } catch (err) {
       console.warn('Face enrollment error:', err);
