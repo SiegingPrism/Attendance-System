@@ -7,6 +7,7 @@ AttendPulse is a comprehensive, institutional-grade web portal designed for coll
 ## 🚀 Key Features
 
 ### 🎓 Student Portal
+- **Biometric Face Enrollment**: Self-service student facial profile enrollment modal with real-time oval framing guide and camera snapshot/upload capabilities.
 - **Dynamic QR Code Check-in**: Fast attendance check-in with simulated geolocation verification.
 - **Real-Time Attendance Analytics**: Subject-wise percentage, conducted vs. attended metrics, and safe-to-miss / catch-up calculators.
 - **Official Examination Hall Ticket & Detention Alerts**:
@@ -16,6 +17,11 @@ AttendPulse is a comprehensive, institutional-grade web portal designed for coll
 - **Academic Calendar & Holidays**: View upcoming public holidays, exam weeks, and special compensatory lectures.
 
 ### 👨‍🏫 Faculty Portal
+- **AI Facial Recognition with Classroom Distance Auto-Zoom**:
+  - **Optical Distance Estimation**: Automatically computes student physical distance ($0.8\text{m} - 7.5\text{m}$) using pinhole facial geometry and interpupillary scale.
+  - **Dynamic Camera Auto-Zoom**: Automatically zooms in ($1.0\times$ to $4.0\times$) to magnify students in distant lecture hall rows (e.g., Row 3 to Back Bench) and smoothly pulls back for wide panoramic shots.
+  - **Hands-Free Auto-Attendance**: Matches facial descriptors against enrolled class rosters in real-time, automatically marking students `PRESENT` (`method: 'FACE'`) with auditory chimes and live roster check-offs.
+  - **Interactive Classroom Simulation Deck**: Direct preset testing for Front Row ($1.2\text{m}$), Mid Row ($3.4\text{m}$), Back Bench ($5.8\text{m}$), Multi-Aisle Pan, or physical webcam.
 - **Rotating QR Code Session Engine**: Launch live attendance sessions with dynamic token rotation, live attendee counter, and topic coverage input.
 - **1-Click Quick Roll Call**: Fast manual attendance sheet with bulk-mark toggles (Present/Absent/Late).
 - **Compensatory & Extra Class Scheduler**: Schedule Saturday or evening extra lectures to cover syllabus, automatically broadcasting alerts to enrolled students.

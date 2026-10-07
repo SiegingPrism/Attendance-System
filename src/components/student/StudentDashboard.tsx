@@ -3,7 +3,7 @@ import { useAttendance } from '../../context/AttendanceContext';
 import {
   AlertTriangle, Calendar, Clock, MapPin,
   TrendingUp, FileSpreadsheet, HelpCircle, CheckCircle2,
-  BookOpen, User as UserIcon, FileText, Award, ShieldCheck, X
+  BookOpen, User as UserIcon, FileText, Award, ShieldCheck, X, Scan,
 } from 'lucide-react';
 import { CircularProgress, ProgressBar } from '../common/ProgressBar';
 import { Badge } from '../common/Badge';
@@ -13,6 +13,7 @@ import { AttendanceCalendarView } from './AttendanceCalendarView';
 import { HallTicketModal } from './HallTicketModal';
 import { ApplyLeaveModal } from './ApplyLeaveModal';
 import { AcademicCalendarModal } from '../common/AcademicCalendarModal';
+import { FaceEnrollmentModal } from './FaceEnrollmentModal';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -34,6 +35,7 @@ export const StudentDashboard: React.FC = () => {
   const [isHallTicketOpen, setIsHallTicketOpen] = useState(false);
   const [isApplyLeaveOpen, setIsApplyLeaveOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isFaceEnrollOpen, setIsFaceEnrollOpen] = useState(false);
   const [leaveToastMsg, setLeaveToastMsg] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<'ALL' | 'PRESENT' | 'ABSENT'>('ALL');
   const [viewMode, setViewMode] = useState<'TABLE' | 'CALENDAR'>('TABLE');
@@ -67,6 +69,21 @@ export const StudentDashboard: React.FC = () => {
           </p>
         </div>
         <div className="page-header-actions" style={{ flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-secondary"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              borderColor: currentStudent.face_registered ? 'var(--green-200)' : 'var(--blue-200)',
+              background: currentStudent.face_registered ? 'var(--green-50)' : 'var(--blue-50)',
+              color: currentStudent.face_registered ? 'var(--green-700)' : 'var(--blue-700)',
+            }}
+            onClick={() => setIsFaceEnrollOpen(true)}
+          >
+            <Scan size={14} />
+            {currentStudent.face_registered ? 'Face Biometrics: Enrolled ✓' : 'Register Face Biometrics'}
+          </button>
           <button className="btn btn-secondary" onClick={() => setIsCalendarOpen(true)}>
             <Calendar size={14} /> Academic Calendar
           </button>
@@ -728,7 +745,17 @@ export const StudentDashboard: React.FC = () => {
                         <Badge status={rec.status} />
                       </td>
                       <td style={{ color: 'var(--gray-500)', fontSize: '0.8125rem' }}>
-                        Regular Lecture
+                        {rec.method === 'FACE' ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 4, background: 'rgba(59, 130, 246, 0.1)', color: '#2563eb', fontWeight: 600, fontSize: '0.75rem' }}>
+                            <Scan size={11} /> Face Recognition
+                          </span>
+                        ) : rec.method === 'QR' ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 4, background: 'rgba(16, 185, 129, 0.1)', color: '#059669', fontWeight: 600, fontSize: '0.75rem' }}>
+                            Rolling QR
+                          </span>
+                        ) : (
+                          'Manual Roll Call'
+                        )}
                       </td>
                     </tr>
                   );
@@ -767,6 +794,12 @@ export const StudentDashboard: React.FC = () => {
       <AcademicCalendarModal
         isOpen={isCalendarOpen}
         onClose={() => setIsCalendarOpen(false)}
+      />
+
+      {/* Modal: Student Biometric Face Enrollment */}
+      <FaceEnrollmentModal
+        isOpen={isFaceEnrollOpen}
+        onClose={() => setIsFaceEnrollOpen(false)}
       />
     </div>
   );

@@ -71,6 +71,13 @@ interface AttendanceContextType {
   rotateSessionToken: (sessionId: string) => void;
   closeAttendanceSession: (sessionId: string) => void;
   markAttendanceViaQR: (qrString: string) => { success: boolean; message: string; subject?: string };
+  markAttendanceViaFace: (
+    classId: string,
+    studentId: string,
+    confidence: number,
+    sessionId?: string
+  ) => { success: boolean; message: string; studentName?: string; alreadyMarked?: boolean };
+  registerStudentFace: (studentId: string, photoUrl: string, descriptor?: number[]) => void;
   manualUpdateAttendance: (sessionId: string, studentId: string, classId: string, status: AttendanceStatus) => void;
   submitCorrectionRequest: (classId: string, subjectName: string, date: string, reason: string) => void;
   reviewCorrectionRequest: (requestId: string, status: 'APPROVED' | 'REJECTED', comment?: string) => void;
@@ -564,6 +571,105 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       subject: targetSubject?.name,
     };
   }, [currentStudent, sessions, enrollments, records, classes, subjects]);
+
+  // AI Facial Recognition Attendance Marking
+  const markAttendanceViaFace = useCallback(
+    (
+      classId: string,
+      studentId: string,
+      confidence: number,
+      sessionId?: string
+    ): { success: boolean; message: string; studentName?: string; alreadyMarked?: boolean } => {
+      const student = students.find((s) => s.id === studentId);
+      if (!student) {
+        return { success: false, message: 'Student not recognized in system.' };
+      }
+
+      const targetClass = classes.find((c) => c.id === classId);
+      if (!targetClass) {
+        return { success: false, message: 'Class not found.' };
+      }
+
+      let effectiveSessionId = sessionId;
+      if (!effectiveSessionId) {
+        if (activeSession && activeSession.class_id === classId) {
+          effectiveSessionId = activeSession.id;
+        } else {
+          effectiveSessionId = `sess-face-${Date.now()}`;
+          const newSession: AttendanceSession = {
+            id: effectiveSessionId,
+            class_id: classId,
+            faculty_id: targetClass.faculty_id,
+            start_time: new Date().toISOString(),
+            status: 'ACTIVE',
+            qr_token: `face-${Date.now()}`,
+            token_generated_at: Date.now(),
+            expires_at: Date.now() + 60 * 60 * 1000,
+            token_refresh_interval_sec: 30,
+            topic: 'AI Face Recognition Lecture',
+          };
+          setSessions((prev) => [newSession, ...prev]);
+        }
+      }
+
+      // Check if student is already marked present for this session
+      const isAlreadyPresent = records.some(
+        (r) => r.session_id === effectiveSessionId && r.student_id === studentId && (r.status === 'PRESENT' || r.status === 'LATE')
+      );
+
+      if (isAlreadyPresent) {
+        return {
+          success: true,
+          alreadyMarked: true,
+          message: `${student.name} is already marked PRESENT.`,
+          studentName: student.name,
+        };
+      }
+
+      const newRecord: AttendanceRecord = {
+        id: `rec-face-${Date.now()}-${studentId}`,
+        session_id: effectiveSessionId,
+        student_id: studentId,
+        class_id: classId,
+        status: 'PRESENT',
+        marked_at: new Date().toISOString(),
+        method: 'FACE',
+      };
+
+      setRecords((prev) => [newRecord, ...prev]);
+
+      return {
+        success: true,
+        alreadyMarked: false,
+        message: `${student.name} marked PRESENT (${Math.round(confidence * 100)}% match)!`,
+        studentName: student.name,
+      };
+    },
+    [students, classes, activeSession, records]
+  );
+
+  // Biometric Face Profile Registration
+  const registerStudentFace = useCallback((studentId: string, photoUrl: string, descriptor?: number[]) => {
+    setStudents((prev) =>
+      prev.map((s) => {
+        if (s.id === studentId) {
+          return {
+            ...s,
+            face_registered: true,
+            face_photo: photoUrl,
+            avatar: photoUrl || s.avatar,
+            face_profile: {
+              student_id: studentId,
+              enrolled_at: new Date().toISOString(),
+              photo_url: photoUrl,
+              descriptor: descriptor || s.face_profile?.descriptor,
+            },
+          };
+        }
+        return s;
+      })
+    );
+  }, []);
 
   // Manual attendance override by Faculty
   const manualUpdateAttendance = useCallback(
@@ -1308,6 +1414,8 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         rotateSessionToken,
         closeAttendanceSession,
         markAttendanceViaQR,
+        markAttendanceViaFace,
+        registerStudentFace,
         manualUpdateAttendance,
         submitCorrectionRequest,
         reviewCorrectionRequest,

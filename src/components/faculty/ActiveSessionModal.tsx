@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import { QRCodeSVG } from 'qrcode.react';
-import { X, Clock, RefreshCw, Power, QrCode, CheckCircle2, Users } from 'lucide-react';
+import { X, Clock, RefreshCw, Power, QrCode, CheckCircle2, Users, Scan } from 'lucide-react';
 import { Badge } from '../common/Badge';
+import { FaceAttendanceScannerModal } from './FaceAttendanceScannerModal';
 
 interface ActiveSessionModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({ isOpen, 
   const [timeLeft, setTimeLeft] = useState(30);
   const [selectedClassId, setSelectedClassId] = useState('');
   const [topic, setTopic] = useState('');
+  const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !activeSession) return;
@@ -122,6 +124,18 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({ isOpen, 
             <span className="badge badge-success">Live Session</span>
           </div>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              className="btn btn-primary btn-sm"
+              style={{
+                background: 'linear-gradient(135deg, #2563eb, #0284c7)',
+                border: 'none',
+                color: '#ffffff',
+              }}
+              onClick={() => setIsFaceModalOpen(true)}
+            >
+              <Scan size={13} />
+              Launch AI Face Scanner
+            </button>
             <button className="btn btn-danger btn-sm" onClick={handleClose}>
               <Power size={13} />
               End Session
@@ -234,6 +248,13 @@ export const ActiveSessionModal: React.FC<ActiveSessionModalProps> = ({ isOpen, 
           </div>
         </div>
       </div>
+
+      {/* AI Facial Recognition Scanner Modal */}
+      <FaceAttendanceScannerModal
+        isOpen={isFaceModalOpen}
+        onClose={() => setIsFaceModalOpen(false)}
+        targetClass={currentClass || null}
+      />
     </div>
   );
 };

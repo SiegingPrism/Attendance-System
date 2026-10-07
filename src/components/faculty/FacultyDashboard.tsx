@@ -1,10 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { useAttendance } from '../../context/AttendanceContext';
 import {
   Play, Square, ChevronDown, ChevronUp, BarChart3,
   CheckCircle, X as XIcon, Clock, QrCode, Edit3, Users,
   Plus, Edit2, Trash2, Calendar, MapPin, Layers, Upload,
-  CheckCheck, Download, FileText,
+  CheckCheck, Download, FileText, Scan,
 } from 'lucide-react';
 import { ActiveSessionModal } from './ActiveSessionModal';
 import { ClassScheduleModal } from './ClassScheduleModal';
@@ -13,6 +13,7 @@ import { QuickAttendanceModal } from './QuickAttendanceModal';
 import { LeaveApplicationsInboxModal } from './LeaveApplicationsInboxModal';
 import { AcademicCalendarModal } from '../common/AcademicCalendarModal';
 import { ScheduleExtraClassModal } from './ScheduleExtraClassModal';
+import { FaceAttendanceScannerModal } from './FaceAttendanceScannerModal';
 import { exportClassMatrixCSV } from '../../utils/exportUtils';
 import { Badge } from '../common/Badge';
 import { ProgressBar } from '../common/ProgressBar';
@@ -40,6 +41,9 @@ export const FacultyDashboard: React.FC = () => {
   const [selectedClassForAttendance, setSelectedClassForAttendance] = useState<CollegeClass | null>(null);
   const [selectedClassForEdit, setSelectedClassForEdit] = useState<CollegeClass | null>(null);
   const [viewMode, setViewMode] = useState<'LIST' | 'SCHEDULE'>('LIST');
+  const [isFaceScannerOpen, setIsFaceScannerOpen] = useState(false);
+  const [faceScannerClass, setFaceScannerClass] = useState<CollegeClass | null>(null);
+  const [ledgerClassFilter, setLedgerClassFilter] = useState<string>('ALL');
 
   if (!currentFaculty) return <div className="empty-state"><p>No faculty profile found.</p></div>;
 
@@ -101,7 +105,6 @@ export const FacultyDashboard: React.FC = () => {
   )].length;
 
   // Conducted lectures aggregation for Faculty Ledger
-  const [ledgerClassFilter, setLedgerClassFilter] = useState<string>('ALL');
   const myClassIds = myClasses.map((c) => c.id);
   const myRecords = records.filter((r) => myClassIds.includes(r.class_id));
 
@@ -190,8 +193,20 @@ export const FacultyDashboard: React.FC = () => {
           <button className="btn btn-secondary" onClick={() => setIsImportTimetableOpen(true)}>
             <Upload size={14} /> Import Timetable
           </button>
-          <button className="btn btn-primary" onClick={handleOpenAddModal}>
-            <Plus size={14} /> Add Class
+          <button
+            className="btn btn-primary"
+            style={{
+              background: 'linear-gradient(135deg, #2563eb 0%, #0284c7 100%)',
+              border: 'none',
+              boxShadow: '0 2px 8px rgba(37, 99, 235, 0.35)',
+              color: '#ffffff',
+            }}
+            onClick={() => {
+              setFaceScannerClass(myClasses[0] || classes[0] || null);
+              setIsFaceScannerOpen(true);
+            }}
+          >
+            <Scan size={14} /> AI Face Auto-Attendance
           </button>
           <button className="btn btn-secondary" onClick={() => setIsSessionModalOpen(true)}>
             <QrCode size={14} /> QR Session
@@ -430,6 +445,22 @@ export const FacultyDashboard: React.FC = () => {
                               <Play size={12} /> Start
                             </button>
                           )}
+
+                          <button
+                            className="btn btn-primary btn-sm"
+                            style={{
+                              background: 'linear-gradient(135deg, #2563eb, #0284c7)',
+                              border: 'none',
+                              color: '#fff',
+                            }}
+                            title="AI Facial Recognition Attendance with Auto-Zoom"
+                            onClick={() => {
+                              setFaceScannerClass(cls);
+                              setIsFaceScannerOpen(true);
+                            }}
+                          >
+                            <Scan size={12} /> Face Scan
+                          </button>
 
                           <button
                             className="btn btn-secondary btn-sm"
@@ -868,6 +899,13 @@ export const FacultyDashboard: React.FC = () => {
       <ScheduleExtraClassModal
         isOpen={isExtraClassModalOpen}
         onClose={() => setIsExtraClassModalOpen(false)}
+      />
+
+      {/* Modal: AI Facial Recognition Camera Scanner with Classroom Auto-Zoom */}
+      <FaceAttendanceScannerModal
+        isOpen={isFaceScannerOpen}
+        onClose={() => setIsFaceScannerOpen(false)}
+        targetClass={faceScannerClass}
       />
     </div>
   );

@@ -11,6 +11,7 @@ import {
   Announcement,
   User,
 } from '../types';
+import { generateDeterministicBiometricDescriptor } from '../utils/faceRecognitionEngine';
 
 export const initialDepartments: Department[] = [
   { id: 'dept-ce', name: 'Computer Engineering', code: 'CE' },
@@ -46,56 +47,65 @@ export const initialFaculty: Faculty[] = [
   { id: 'fac-8', user_id: 'usr-fac-8', name: 'Dr. Sunita Bhatt', email: 'bhatt.ce@college.edu', department_id: 'dept-ce', employee_id: 'EMP-108', designation: 'Professor' },
 ];
 
-export const initialStudents: Student[] = [
+const rawStudents: Student[] = [
   // ── SEMESTER 3 · DIVISION A (CE) ───────────────────────────
-  { id: 'stu-1', user_id: 'usr-stu-1', name: 'Aarav Patel', email: 'aarav.p@student.college.edu', roll_number: '01', enrollment_number: 'EN202401', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-2', user_id: 'usr-stu-2', name: 'Priya Sharma', email: 'priya.s@student.college.edu', roll_number: '02', enrollment_number: 'EN202402', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-3', user_id: 'usr-stu-3', name: 'Rohan Kulkarni', email: 'rohan.k@student.college.edu', roll_number: '03', enrollment_number: 'EN202403', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-4', user_id: 'usr-stu-4', name: 'Sneha Gupta', email: 'sneha.g@student.college.edu', roll_number: '04', enrollment_number: 'EN202404', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-5', user_id: 'usr-stu-5', name: 'Ananya Roy', email: 'ananya.r@student.college.edu', roll_number: '05', enrollment_number: 'EN202405', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-6', user_id: 'usr-stu-6', name: 'Kabir Mehta', email: 'kabir.m@student.college.edu', roll_number: '06', enrollment_number: 'EN202406', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-7', user_id: 'usr-stu-7', name: 'Ishaan Joshi', email: 'ishaan.j@student.college.edu', roll_number: '07', enrollment_number: 'EN202407', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-8', user_id: 'usr-stu-8', name: 'Diya Nair', email: 'diya.n@student.college.edu', roll_number: '08', enrollment_number: 'EN202408', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-9', user_id: 'usr-stu-9', name: 'Vivaan Desai', email: 'vivaan.d@student.college.edu', roll_number: '09', enrollment_number: 'EN202409', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-10', user_id: 'usr-stu-10', name: 'Riya Sen', email: 'riya.s@student.college.edu', roll_number: '10', enrollment_number: 'EN202410', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-11', user_id: 'usr-stu-11', name: 'Arjun Khanna', email: 'arjun.k@student.college.edu', roll_number: '11', enrollment_number: 'EN202411', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-12', user_id: 'usr-stu-12', name: 'Kavya Pillai', email: 'kavya.p@student.college.edu', roll_number: '12', enrollment_number: 'EN202412', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-13', user_id: 'usr-stu-13', name: 'Siddharth Rao', email: 'siddharth.r@student.college.edu', roll_number: '13', enrollment_number: 'EN202413', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-14', user_id: 'usr-stu-14', name: 'Aditya Verma', email: 'aditya.v@student.college.edu', roll_number: '14', enrollment_number: 'EN202414', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-15', user_id: 'usr-stu-15', name: 'Tara Mukherjee', email: 'tara.m@student.college.edu', roll_number: '15', enrollment_number: 'EN202415', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-16', user_id: 'usr-stu-16', name: 'Devansh Hegde', email: 'devansh.h@student.college.edu', roll_number: '16', enrollment_number: 'EN202416', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-17', user_id: 'usr-stu-17', name: 'Meera Chawla', email: 'meera.c@student.college.edu', roll_number: '17', enrollment_number: 'EN202417', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-18', user_id: 'usr-stu-18', name: 'Kunal Singhal', email: 'kunal.s@student.college.edu', roll_number: '18', enrollment_number: 'EN202418', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-19', user_id: 'usr-stu-19', name: 'Anika Bansal', email: 'anika.b@student.college.edu', roll_number: '19', enrollment_number: 'EN202419', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-20', user_id: 'usr-stu-20', name: 'Aryan Kapoor', email: 'aryan.k@student.college.edu', roll_number: '20', enrollment_number: 'EN202420', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-21', user_id: 'usr-stu-21', name: 'Pranav Saxena', email: 'pranav.s@student.college.edu', roll_number: '21', enrollment_number: 'EN202421', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-22', user_id: 'usr-stu-22', name: 'Nisha Bhatia', email: 'nisha.b@student.college.edu', roll_number: '22', enrollment_number: 'EN202422', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-23', user_id: 'usr-stu-23', name: 'Yash Vardhan', email: 'yash.v@student.college.edu', roll_number: '23', enrollment_number: 'EN202423', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-24', user_id: 'usr-stu-24', name: 'Simran Kaur', email: 'simran.k@student.college.edu', roll_number: '24', enrollment_number: 'EN202424', department_id: 'dept-ce', semester: 3, division: 'A' },
-  { id: 'stu-25', user_id: 'usr-stu-25', name: 'Tanvi Iyer', email: 'tanvi.i@student.college.edu', roll_number: '25', enrollment_number: 'EN202425', department_id: 'dept-ce', semester: 3, division: 'A' },
+  { id: 'stu-1', user_id: 'usr-stu-1', name: 'Aarav Patel', email: 'aarav.p@student.college.edu', roll_number: '01', enrollment_number: 'EN202401', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-2', user_id: 'usr-stu-2', name: 'Priya Sharma', email: 'priya.s@student.college.edu', roll_number: '02', enrollment_number: 'EN202402', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-3', user_id: 'usr-stu-3', name: 'Rohan Kulkarni', email: 'rohan.k@student.college.edu', roll_number: '03', enrollment_number: 'EN202403', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-4', user_id: 'usr-stu-4', name: 'Sneha Gupta', email: 'sneha.g@student.college.edu', roll_number: '04', enrollment_number: 'EN202404', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-5', user_id: 'usr-stu-5', name: 'Ananya Roy', email: 'ananya.r@student.college.edu', roll_number: '05', enrollment_number: 'EN202405', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-6', user_id: 'usr-stu-6', name: 'Kabir Mehta', email: 'kabir.m@student.college.edu', roll_number: '06', enrollment_number: 'EN202406', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-7', user_id: 'usr-stu-7', name: 'Ishaan Joshi', email: 'ishaan.j@student.college.edu', roll_number: '07', enrollment_number: 'EN202407', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-8', user_id: 'usr-stu-8', name: 'Diya Nair', email: 'diya.n@student.college.edu', roll_number: '08', enrollment_number: 'EN202408', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-9', user_id: 'usr-stu-9', name: 'Vivaan Desai', email: 'vivaan.d@student.college.edu', roll_number: '09', enrollment_number: 'EN202409', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-10', user_id: 'usr-stu-10', name: 'Riya Sen', email: 'riya.s@student.college.edu', roll_number: '10', enrollment_number: 'EN202410', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true, avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80' },
+  { id: 'stu-11', user_id: 'usr-stu-11', name: 'Arjun Khanna', email: 'arjun.k@student.college.edu', roll_number: '11', enrollment_number: 'EN202411', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-12', user_id: 'usr-stu-12', name: 'Kavya Pillai', email: 'kavya.p@student.college.edu', roll_number: '12', enrollment_number: 'EN202412', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-13', user_id: 'usr-stu-13', name: 'Siddharth Rao', email: 'siddharth.r@student.college.edu', roll_number: '13', enrollment_number: 'EN202413', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-14', user_id: 'usr-stu-14', name: 'Aditya Verma', email: 'aditya.v@student.college.edu', roll_number: '14', enrollment_number: 'EN202414', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-15', user_id: 'usr-stu-15', name: 'Tara Mukherjee', email: 'tara.m@student.college.edu', roll_number: '15', enrollment_number: 'EN202415', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-16', user_id: 'usr-stu-16', name: 'Devansh Hegde', email: 'devansh.h@student.college.edu', roll_number: '16', enrollment_number: 'EN202416', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-17', user_id: 'usr-stu-17', name: 'Meera Chawla', email: 'meera.c@student.college.edu', roll_number: '17', enrollment_number: 'EN202417', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-18', user_id: 'usr-stu-18', name: 'Kunal Singhal', email: 'kunal.s@student.college.edu', roll_number: '18', enrollment_number: 'EN202418', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-19', user_id: 'usr-stu-19', name: 'Anika Bansal', email: 'anika.b@student.college.edu', roll_number: '19', enrollment_number: 'EN202419', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-20', user_id: 'usr-stu-20', name: 'Aryan Kapoor', email: 'aryan.k@student.college.edu', roll_number: '20', enrollment_number: 'EN202420', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-21', user_id: 'usr-stu-21', name: 'Pranav Saxena', email: 'pranav.s@student.college.edu', roll_number: '21', enrollment_number: 'EN202421', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-22', user_id: 'usr-stu-22', name: 'Nisha Bhatia', email: 'nisha.b@student.college.edu', roll_number: '22', enrollment_number: 'EN202422', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-23', user_id: 'usr-stu-23', name: 'Yash Vardhan', email: 'yash.v@student.college.edu', roll_number: '23', enrollment_number: 'EN202423', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-24', user_id: 'usr-stu-24', name: 'Simran Kaur', email: 'simran.k@student.college.edu', roll_number: '24', enrollment_number: 'EN202424', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
+  { id: 'stu-25', user_id: 'usr-stu-25', name: 'Tanvi Iyer', email: 'tanvi.i@student.college.edu', roll_number: '25', enrollment_number: 'EN202425', department_id: 'dept-ce', semester: 3, division: 'A', face_registered: true },
 
   // ── SEMESTER 3 · DIVISION B (CE / IT) ──────────────────────
-  { id: 'stu-26', user_id: 'usr-stu-26', name: 'Varun Reddy', email: 'varun.r@student.college.edu', roll_number: '01', enrollment_number: 'EN202431', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-27', user_id: 'usr-stu-27', name: 'Bhavna Menon', email: 'bhavna.m@student.college.edu', roll_number: '02', enrollment_number: 'EN202432', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-28', user_id: 'usr-stu-28', name: 'Chirag Sethi', email: 'chirag.s@student.college.edu', roll_number: '03', enrollment_number: 'EN202433', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-29', user_id: 'usr-stu-29', name: 'Deepa Nambiar', email: 'deepa.n@student.college.edu', roll_number: '04', enrollment_number: 'EN202434', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-30', user_id: 'usr-stu-30', name: 'Eeshan Mathur', email: 'eeshan.m@student.college.edu', roll_number: '05', enrollment_number: 'EN202435', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-31', user_id: 'usr-stu-31', name: 'Falguni Pathak', email: 'falguni.p@student.college.edu', roll_number: '06', enrollment_number: 'EN202436', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-32', user_id: 'usr-stu-32', name: 'Gaurav Tiwari', email: 'gaurav.t@student.college.edu', roll_number: '07', enrollment_number: 'EN202437', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-33', user_id: 'usr-stu-33', name: 'Harshita Bajaj', email: 'harshita.b@student.college.edu', roll_number: '08', enrollment_number: 'EN202438', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-34', user_id: 'usr-stu-34', name: 'Indrajit Paul', email: 'indrajit.p@student.college.edu', roll_number: '09', enrollment_number: 'EN202439', department_id: 'dept-ce', semester: 3, division: 'B' },
-  { id: 'stu-35', user_id: 'usr-stu-35', name: 'Jhanvi Trivedi', email: 'jhanvi.t@student.college.edu', roll_number: '10', enrollment_number: 'EN202440', department_id: 'dept-ce', semester: 3, division: 'B' },
+  { id: 'stu-26', user_id: 'usr-stu-26', name: 'Varun Reddy', email: 'varun.r@student.college.edu', roll_number: '01', enrollment_number: 'EN202431', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-27', user_id: 'usr-stu-27', name: 'Bhavna Menon', email: 'bhavna.m@student.college.edu', roll_number: '02', enrollment_number: 'EN202432', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-28', user_id: 'usr-stu-28', name: 'Chirag Sethi', email: 'chirag.s@student.college.edu', roll_number: '03', enrollment_number: 'EN202433', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-29', user_id: 'usr-stu-29', name: 'Deepa Nambiar', email: 'deepa.n@student.college.edu', roll_number: '04', enrollment_number: 'EN202434', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-30', user_id: 'usr-stu-30', name: 'Eeshan Mathur', email: 'eeshan.m@student.college.edu', roll_number: '05', enrollment_number: 'EN202435', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-31', user_id: 'usr-stu-31', name: 'Falguni Pathak', email: 'falguni.p@student.college.edu', roll_number: '06', enrollment_number: 'EN202436', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-32', user_id: 'usr-stu-32', name: 'Gaurav Tiwari', email: 'gaurav.t@student.college.edu', roll_number: '07', enrollment_number: 'EN202437', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-33', user_id: 'usr-stu-33', name: 'Harshita Bajaj', email: 'harshita.b@student.college.edu', roll_number: '08', enrollment_number: 'EN202438', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-34', user_id: 'usr-stu-34', name: 'Indrajit Paul', email: 'indrajit.p@student.college.edu', roll_number: '09', enrollment_number: 'EN202439', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
+  { id: 'stu-35', user_id: 'usr-stu-35', name: 'Jhanvi Trivedi', email: 'jhanvi.t@student.college.edu', roll_number: '10', enrollment_number: 'EN202440', department_id: 'dept-ce', semester: 3, division: 'B', face_registered: true },
 
   // ── SEMESTER 5 · DIVISION A (IT / AIDS / CE) ───────────────
-  { id: 'stu-36', user_id: 'usr-stu-36', name: 'Dhruv Malhotra', email: 'dhruv.m@student.college.edu', roll_number: '01', enrollment_number: 'EN202301', department_id: 'dept-it', semester: 5, division: 'A' },
-  { id: 'stu-37', user_id: 'usr-stu-37', name: 'Rupali Deshmukh', email: 'rupali.d@student.college.edu', roll_number: '02', enrollment_number: 'EN202302', department_id: 'dept-it', semester: 5, division: 'A' },
-  { id: 'stu-38', user_id: 'usr-stu-38', name: 'Soham Chatterjee', email: 'soham.c@student.college.edu', roll_number: '03', enrollment_number: 'EN202303', department_id: 'dept-aids', semester: 5, division: 'A' },
-  { id: 'stu-39', user_id: 'usr-stu-39', name: 'Trisha Somani', email: 'trisha.s@student.college.edu', roll_number: '04', enrollment_number: 'EN202304', department_id: 'dept-aids', semester: 5, division: 'A' },
-  { id: 'stu-40', user_id: 'usr-stu-40', name: 'Utkarsh Aggarwal', email: 'utkarsh.a@student.college.edu', roll_number: '05', enrollment_number: 'EN202305', department_id: 'dept-ce', semester: 5, division: 'A' },
-  { id: 'stu-41', user_id: 'usr-stu-41', name: 'Vaishnavi Rane', email: 'vaishnavi.r@student.college.edu', roll_number: '06', enrollment_number: 'EN202306', department_id: 'dept-ce', semester: 5, division: 'A' },
-  { id: 'stu-42', user_id: 'usr-stu-42', name: 'Waseem Akram', email: 'waseem.a@student.college.edu', roll_number: '07', enrollment_number: 'EN202307', department_id: 'dept-it', semester: 5, division: 'A' },
-  { id: 'stu-43', user_id: 'usr-stu-43', name: 'Zoya Siddiqui', email: 'zoya.s@student.college.edu', roll_number: '08', enrollment_number: 'EN202308', department_id: 'dept-aids', semester: 5, division: 'A' },
+  { id: 'stu-36', user_id: 'usr-stu-36', name: 'Dhruv Malhotra', email: 'dhruv.m@student.college.edu', roll_number: '01', enrollment_number: 'EN202301', department_id: 'dept-it', semester: 5, division: 'A', face_registered: true },
+  { id: 'stu-37', user_id: 'usr-stu-37', name: 'Rupali Deshmukh', email: 'rupali.d@student.college.edu', roll_number: '02', enrollment_number: 'EN202302', department_id: 'dept-it', semester: 5, division: 'A', face_registered: true },
+  { id: 'stu-38', user_id: 'usr-stu-38', name: 'Soham Chatterjee', email: 'soham.c@student.college.edu', roll_number: '03', enrollment_number: 'EN202303', department_id: 'dept-aids', semester: 5, division: 'A', face_registered: true },
+  { id: 'stu-39', user_id: 'usr-stu-39', name: 'Trisha Somani', email: 'trisha.s@student.college.edu', roll_number: '04', enrollment_number: 'EN202304', department_id: 'dept-aids', semester: 5, division: 'A', face_registered: true },
+  { id: 'stu-40', user_id: 'usr-stu-40', name: 'Utkarsh Aggarwal', email: 'utkarsh.a@student.college.edu', roll_number: '05', enrollment_number: 'EN202305', department_id: 'dept-ce', semester: 5, division: 'A', face_registered: true },
+  { id: 'stu-41', user_id: 'usr-stu-41', name: 'Vaishnavi Rane', email: 'vaishnavi.r@student.college.edu', roll_number: '06', enrollment_number: 'EN202306', department_id: 'dept-ce', semester: 5, division: 'A', face_registered: true },
+  { id: 'stu-42', user_id: 'usr-stu-42', name: 'Waseem Akram', email: 'waseem.a@student.college.edu', roll_number: '07', enrollment_number: 'EN202307', department_id: 'dept-it', semester: 5, division: 'A', face_registered: true },
 ];
+
+export const initialStudents: Student[] = rawStudents.map((s) => ({
+  ...s,
+  face_profile: s.face_profile || (s.face_registered ? {
+    student_id: s.id,
+    enrolled_at: '2025-01-15T09:00:00Z',
+    photo_url: s.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150',
+    descriptor: generateDeterministicBiometricDescriptor(s.id),
+  } : undefined),
+}));
 
 export const initialUsers: User[] = [
   // Admin
