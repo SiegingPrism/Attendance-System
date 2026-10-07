@@ -534,10 +534,14 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return { success: false, message: 'Security token mismatch. Please scan the newly refreshed QR code.' };
     }
 
-    // Check enrollment
-    const isEnrolled = enrollments.some(
-      (e) => e.student_id === currentStudent.id && e.class_id === session.class_id
-    );
+    const targetClass = classes.find((c) => c.id === session.class_id);
+    const targetSubject = subjects.find((s) => s.id === targetClass?.subject_id);
+
+    // Check enrollment: explicit enrollment record OR cohort match (same semester & division)
+    const isEnrolled =
+      enrollments.some((e) => e.student_id === currentStudent.id && e.class_id === session.class_id) ||
+      (targetClass && targetClass.semester === currentStudent.semester && targetClass.division === currentStudent.division);
+
     if (!isEnrolled) {
       return { success: false, message: 'You are not enrolled in this subject class.' };
     }
@@ -549,9 +553,6 @@ export const AttendanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     if (alreadyMarked) {
       return { success: false, message: 'Attendance already recorded for this session!' };
     }
-
-    const targetClass = classes.find((c) => c.id === session.class_id);
-    const targetSubject = subjects.find((s) => s.id === targetClass?.subject_id);
 
     const newRecord: AttendanceRecord = {
       id: `rec-qr-${Date.now()}`,

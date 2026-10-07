@@ -3,7 +3,7 @@ import { useAttendance } from '../../context/AttendanceContext';
 import {
   QrCode, GraduationCap, ShieldCheck, UserCheck, RotateCcw, Radio,
   Bell, HelpCircle, Calculator, X, Plus, Clock, CheckCircle2, AlertCircle,
-  TrendingUp, Users,
+  TrendingUp, Users, Check,
 } from 'lucide-react';
 import { CorrectionRequestModal } from '../student/CorrectionRequestModal';
 import { Badge } from '../common/Badge';
@@ -25,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
     subjects,
     announcements,
     correctionRequests,
+    reviewCorrectionRequest,
     minAttendanceThreshold,
     getStudentStats,
     resetToDefaultData,
@@ -180,70 +181,82 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
               </select>
             )}
 
-            {/* Attendance Calculator Tool - Exclusively Available to Faculty */}
-            {currentRole === 'FACULTY' && (
-              <div className="nav-icon-group">
-                <button
-                  className={`nav-icon-btn${activeDropdown === 'CALCULATOR' ? ' active' : ''}`}
-                  onClick={() => toggleDropdown('CALCULATOR')}
-                  title="Attendance Goal Calculator"
-                  aria-label="Attendance Goal Calculator"
-                >
-                  <Calculator size={16} />
-                </button>
+            {/* Attendance Goal Simulator - Available for Students, Faculty & Admin */}
+            <div className="nav-icon-group">
+              <button
+                className={`nav-icon-btn${activeDropdown === 'CALCULATOR' ? ' active' : ''}`}
+                onClick={() => toggleDropdown('CALCULATOR')}
+                title="Attendance Goal Calculator"
+                aria-label="Attendance Goal Calculator"
+              >
+                <Calculator size={16} />
+              </button>
 
-                {activeDropdown === 'CALCULATOR' && (
-                  <div className="nav-popover" style={{ width: 360 }}>
-                    <div className="nav-popover-header">
-                      <div className="nav-popover-title">
-                        <Calculator size={16} color="var(--blue-600)" />
-                        <span>Attendance Goal Calculator</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+              {activeDropdown === 'CALCULATOR' && (
+                <div className="nav-popover" style={{ width: 360 }}>
+                  <div className="nav-popover-header">
+                    <div className="nav-popover-title">
+                      <Calculator size={16} color="var(--blue-600)" />
+                      <span>Attendance Goal Calculator</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ width: 'auto' }}
+                        value={calcThreshold}
+                        onChange={(e) => setCalcThreshold(parseFloat(e.target.value))}
+                      >
+                        <option value={0.70}>70% target</option>
+                        <option value={0.75}>75% required</option>
+                        <option value={0.80}>80% target</option>
+                        <option value={0.85}>85% target</option>
+                      </select>
+                      <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem' }} onClick={closeDropdown}>
+                        <X size={14} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="nav-popover-body">
+                    {/* Faculty / Admin Student Roster Selector */}
+                    {currentRole !== 'STUDENT' && students.length > 0 && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <label className="form-label" style={{ fontSize: '0.6875rem', marginBottom: '0.25rem', color: 'var(--gray-500)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <Users size={12} color="var(--blue-600)" /> Select Student to Simulate
+                        </label>
                         <select
                           className="form-select form-select-sm"
-                          style={{ width: 'auto' }}
-                          value={calcThreshold}
-                          onChange={(e) => setCalcThreshold(parseFloat(e.target.value))}
+                          value={targetStudent?.id || ''}
+                          onChange={(e) => {
+                            setCalcStudentId(e.target.value);
+                            setCalcBonusPresent(0);
+                            setCalcBonusMissed(0);
+                          }}
                         >
-                          <option value={0.70}>70% target</option>
-                          <option value={0.75}>75% required</option>
-                          <option value={0.80}>80% target</option>
-                          <option value={0.85}>85% target</option>
+                          {students.map((stu) => {
+                            const sStats = getStudentStats(stu.id).overall;
+                            return (
+                              <option key={stu.id} value={stu.id}>
+                                {stu.name} ({stu.roll_number}) — {sStats.percentage}% (Sem {stu.semester}{stu.division})
+                              </option>
+                            );
+                          })}
                         </select>
-                        <button className="btn btn-ghost btn-sm" style={{ padding: '0.2rem' }} onClick={closeDropdown}>
-                          <X size={14} />
-                        </button>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="nav-popover-body">
-                      {/* Faculty Student Roster Selector */}
-                      {students.length > 0 && (
-                        <div style={{ marginBottom: '0.75rem' }}>
-                          <label className="form-label" style={{ fontSize: '0.6875rem', marginBottom: '0.25rem', color: 'var(--gray-500)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            <Users size={12} color="var(--blue-600)" /> Select Student to Simulate
-                          </label>
-                          <select
-                            className="form-select form-select-sm"
-                            value={targetStudent?.id || ''}
-                            onChange={(e) => {
-                              setCalcStudentId(e.target.value);
-                              setCalcBonusPresent(0);
-                              setCalcBonusMissed(0);
-                            }}
-                          >
-                            {students.map((stu) => {
-                              const sStats = getStudentStats(stu.id).overall;
-                              return (
-                                <option key={stu.id} value={stu.id}>
-                                  {stu.name} ({stu.roll_number}) — {sStats.percentage}% (Sem {stu.semester}{stu.division})
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
-                      )}
+                    {/* Student View Banner */}
+                    {currentRole === 'STUDENT' && currentStudent && (
+                      <div style={{ marginBottom: '0.75rem', padding: '0.4rem 0.625rem', background: 'var(--gray-50)', borderRadius: 'var(--r-sm)', border: '1px solid var(--gray-200)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-900)' }}>
+                          {currentStudent.name} (Roll {currentStudent.roll_number})
+                        </span>
+                        <span style={{ fontSize: '0.6875rem', color: 'var(--gray-500)' }}>
+                          Sem {currentStudent.semester}·Div {currentStudent.division}
+                        </span>
+                      </div>
+                    )}
+
                     {/* Metrics Banner */}
                     <div
                       style={{
@@ -328,7 +341,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
                 </div>
               )}
             </div>
-          )}
 
             {/* Icon: Correction / Dispute Requests */}
             <div className="nav-icon-group">
@@ -412,7 +424,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
                           All requests reviewed!
                         </div>
                       ) : (
-                        correctionRequests.slice(0, 5).map((req) => (
+                        correctionRequests.slice(0, 8).map((req) => (
                           <div key={req.id} className="nav-popover-item">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
                               <span style={{ fontWeight: 700, fontSize: '0.8125rem', color: 'var(--gray-900)' }}>
@@ -426,6 +438,24 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
                             <div style={{ fontSize: '0.75rem', color: 'var(--gray-500)', marginTop: 2, fontStyle: 'italic' }}>
                               "{req.reason}"
                             </div>
+                            {req.status === 'PENDING' && (
+                              <div style={{ display: 'flex', gap: '0.375rem', marginTop: '0.5rem', justifyContent: 'flex-end' }}>
+                                <button
+                                  className="btn btn-xs btn-secondary"
+                                  style={{ padding: '0.2rem 0.5rem', color: 'var(--red-600)', borderColor: 'var(--red-200)', background: 'var(--red-50)' }}
+                                  onClick={() => reviewCorrectionRequest(req.id, 'REJECTED', 'Dispute rejected by faculty.')}
+                                >
+                                  <X size={11} /> Reject
+                                </button>
+                                <button
+                                  className="btn btn-xs btn-primary"
+                                  style={{ padding: '0.2rem 0.5rem', background: 'var(--green-600)', borderColor: 'var(--green-600)' }}
+                                  onClick={() => reviewCorrectionRequest(req.id, 'APPROVED', 'Approved by faculty.')}
+                                >
+                                  <Check size={11} /> Approve
+                                </button>
+                              </div>
+                            )}
                           </div>
                         ))
                       )

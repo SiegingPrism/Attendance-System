@@ -4,6 +4,7 @@ import {
   AlertTriangle, Calendar, Clock, MapPin,
   TrendingUp, FileSpreadsheet, HelpCircle, CheckCircle2,
   BookOpen, User as UserIcon, FileText, Award, ShieldCheck, X, Scan,
+  QrCode,
 } from 'lucide-react';
 import { CircularProgress, ProgressBar } from '../common/ProgressBar';
 import { Badge } from '../common/Badge';
@@ -14,6 +15,8 @@ import { HallTicketModal } from './HallTicketModal';
 import { ApplyLeaveModal } from './ApplyLeaveModal';
 import { AcademicCalendarModal } from '../common/AcademicCalendarModal';
 import { FaceEnrollmentModal } from './FaceEnrollmentModal';
+import { QRScannerModal } from './QRScannerModal';
+import { AttendanceCalculatorCard } from './AttendanceCalculatorCard';
 
 export const StudentDashboard: React.FC = () => {
   const {
@@ -30,6 +33,7 @@ export const StudentDashboard: React.FC = () => {
     extraClasses,
   } = useAttendance();
 
+  const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
   const [isCorrectionOpen, setIsCorrectionOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isHallTicketOpen, setIsHallTicketOpen] = useState(false);
@@ -70,6 +74,20 @@ export const StudentDashboard: React.FC = () => {
         </div>
         <div className="page-header-actions" style={{ flexWrap: 'wrap' }}>
           <button
+            className="btn btn-primary"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.375rem',
+              background: activeSession ? 'linear-gradient(135deg, #16a34a, #059669)' : undefined,
+              boxShadow: activeSession ? '0 0 12px rgba(22, 163, 74, 0.35)' : undefined,
+            }}
+            onClick={() => setIsQRScannerOpen(true)}
+          >
+            <QrCode size={14} />
+            {activeSession ? 'Live Lecture: Scan QR Now' : 'Scan Attendance QR'}
+          </button>
+          <button
             className="btn btn-secondary"
             style={{
               display: 'flex',
@@ -98,6 +116,53 @@ export const StudentDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* ── Active Lecture QR Attendance Banner ─────────── */}
+      {activeSession && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0.875rem 1.25rem',
+            background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(16, 185, 129, 0.08))',
+            border: '1px solid var(--blue-300)',
+            borderRadius: 'var(--r-lg)',
+            marginBottom: '1rem',
+            flexWrap: 'wrap',
+            gap: '0.75rem',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span className="pulse-indicator" style={{ width: 10, height: 10 }} />
+            <div>
+              <div style={{ fontSize: '0.875rem', fontWeight: 800, color: 'var(--blue-900)' }}>
+                Live Attendance Session Open:{' '}
+                {classes.find((c) => c.id === activeSession.class_id)?.subject_id
+                  ? subjects.find((s) => s.id === classes.find((c) => c.id === activeSession.class_id)?.subject_id)?.name
+                  : 'Current Lecture'}
+              </div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--gray-600)', marginTop: 2 }}>
+                Room {classes.find((c) => c.id === activeSession.class_id)?.room || '301'} · Scan the rolling QR code or use face verification to mark presence.
+              </div>
+            </div>
+          </div>
+          <button
+            className="btn btn-primary btn-sm"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              fontWeight: 700,
+              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+              boxShadow: '0 0 12px rgba(37, 99, 235, 0.35)',
+            }}
+            onClick={() => setIsQRScannerOpen(true)}
+          >
+            <QrCode size={14} /> Scan QR &amp; Mark Present
+          </button>
+        </div>
+      )}
 
       {/* Leave Notification Banner */}
       {leaveToastMsg && (
@@ -374,6 +439,15 @@ export const StudentDashboard: React.FC = () => {
           >
             <Award size={14} /> {overall.is_low_attendance ? 'Check Detention Status' : 'Official Exam Hall Ticket'}
           </button>
+
+          {/* Interactive What-If Simulation Card */}
+          <div style={{ marginTop: '0.875rem' }}>
+            <AttendanceCalculatorCard
+              present={overall.total_present}
+              conducted={overall.total_conducted}
+              defaultThreshold={minAttendanceThreshold}
+            />
+          </div>
         </div>
 
         {/* Right — Today's Schedule Timetable */}
@@ -518,24 +592,27 @@ export const StudentDashboard: React.FC = () => {
                         <CheckCircle2 size={13} /> Present
                       </span>
                     ) : isActive ? (
-                      <span
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-primary"
                         style={{
                           display: 'inline-flex',
                           alignItems: 'center',
                           gap: 5,
                           fontSize: '0.75rem',
                           fontWeight: 700,
-                          color: 'var(--blue-600)',
-                          background: 'var(--blue-50)',
-                          padding: '0.3rem 0.625rem',
+                          padding: '0.35rem 0.65rem',
                           borderRadius: 'var(--r-full)',
-                          border: '1px solid var(--blue-200)',
                           whiteSpace: 'nowrap',
+                          boxShadow: '0 0 10px rgba(37, 99, 235, 0.3)',
+                          cursor: 'pointer',
                         }}
+                        onClick={() => setIsQRScannerOpen(true)}
+                        title="Scan attendance QR for this active lecture"
                       >
                         <span className="pulse-indicator" style={{ width: 6, height: 6 }} />
-                        Ongoing Lecture
-                      </span>
+                        <QrCode size={12} /> Scan QR Now
+                      </button>
                     ) : (
                       <span
                         style={{
@@ -800,6 +877,12 @@ export const StudentDashboard: React.FC = () => {
       <FaceEnrollmentModal
         isOpen={isFaceEnrollOpen}
         onClose={() => setIsFaceEnrollOpen(false)}
+      />
+
+      {/* Modal: Live Lecture QR Scanner */}
+      <QRScannerModal
+        isOpen={isQRScannerOpen}
+        onClose={() => setIsQRScannerOpen(false)}
       />
     </div>
   );

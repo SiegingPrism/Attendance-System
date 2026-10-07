@@ -295,28 +295,6 @@ export const AdminDashboard: React.FC = () => {
               </div>
             </div>
 
-            {/* Success Student Add Alert */}
-            {addStudentSuccessMsg && (
-              <div className="alert alert-success" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <CheckCircle2 size={16} />
-                  <span>{addStudentSuccessMsg}</span>
-                </div>
-                <button className="btn btn-ghost btn-xs" onClick={() => setAddStudentSuccessMsg(null)}>Dismiss</button>
-              </div>
-            )}
-
-            {/* Success Dispatch Alert */}
-            {dispatchSuccessMsg && (
-              <div className="alert alert-success" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <CheckCircle2 size={16} />
-                  <span>{dispatchSuccessMsg}</span>
-                </div>
-                <button className="btn btn-ghost btn-xs" onClick={() => setDispatchSuccessMsg(null)}>Dismiss</button>
-              </div>
-            )}
-
             {/* Defaulter Alert Banner */}
             {defaulters > 0 && (
               <div className="alert alert-danger" style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
