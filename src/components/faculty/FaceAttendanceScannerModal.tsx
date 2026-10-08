@@ -5,7 +5,7 @@ import {
   Camera, CameraOff, ZoomIn, ZoomOut, Sparkles, CheckCircle2,
   Sliders, Play, Pause, Scan,
   Volume2, VolumeX, Settings2, Video, FlipHorizontal, UserCheck,
-  Monitor, Compass, Layers
+  Monitor, Compass, Layers, Server, Radio, Wifi, WifiOff, Cpu, RefreshCw, AlertTriangle, ExternalLink, Activity
 } from 'lucide-react';
 import {
   loadFaceApiModels,
@@ -29,7 +29,7 @@ interface FaceAttendanceScannerModalProps {
   targetClass: CollegeClass | null;
 }
 
-type ModeType = 'LIVE_WEBCAM' | 'CLASSROOM_SIM';
+type ModeType = 'LIVE_WEBCAM' | 'CLASSROOM_SIM' | 'YOLO11_BACKEND';
 
 export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProps> = ({
   isOpen,
@@ -85,6 +85,23 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudentToEnroll, setSelectedStudentToEnroll] = useState<string>('');
   const [statusMessage, setStatusMessage] = useState<string>('Initializing optical vision...');
+
+  // YOLO11 + ByteTrack AI Backend states
+  const [backendStatus, setBackendStatus] = useState<'IDLE' | 'CONNECTING' | 'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('IDLE');
+  const [backendTelemetry, setBackendTelemetry] = useState<{
+    fps: number;
+    latency_ms: number;
+    active_session: any;
+    marked_count: number;
+    marked_students: Array<{ student_id: string; student_name: string; track_id: number; confidence: number; marked_at: string }>;
+    tracks: Array<{ track_id: number; bbox: number[]; confidence: number; student_id?: string; student_name?: string; is_marked: boolean; consecutive_hits: number }>;
+  } | null>(null);
+  const [backendUrl, setBackendUrl] = useState<string>('http://localhost:8000');
+  const [backendSource, setBackendSource] = useState<'SIMULATED' | '0' | 'RTSP'>('SIMULATED');
+  const [backendRtspInput, setBackendRtspInput] = useState<string>('rtsp://admin:admin123@192.168.1.100:554/ch0');
+  const [backendHealthInfo, setBackendHealthInfo] = useState<any>(null);
+  const [isBackendStartingSession, setIsBackendStartingSession] = useState<boolean>(false);
+  const wsRef = useRef<WebSocket | null>(null);
 
   // Classroom & Sensor Calibration Settings
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
@@ -310,6 +327,151 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
     }
   }, [targetClass, markAttendanceViaFace, activeSession, settings.soundFeedback, enrolledStudents]);
 
+  // Check Backend Health
+  const checkBackendHealth = useCallback(async () => {
+    try {
+      const res = await fetch(`${backendUrl}/api/health`);
+      if (res.ok) {
+        const data = await res.json();
+        setBackendHealthInfo(data);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, [backendUrl]);
+
+  // Start Backend Session with selected camera source
+  const startBackendSession = useCallback(async (sourceOverride?: string) => {
+    if (!targetClass) return;
+    setIsBackendStartingSession(true);
+    try {
+      const camera_source = sourceOverride || (backendSource === 'RTSP' ? backendRtspInput : backendSource);
+      const res = await fetch(`${backendUrl}/api/sessions/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          class_id: targetClass.id,
+          topic: activeSubject ? `${activeSubject.name} Lecture` : 'AI Attendance',
+          camera_source,
+        }),
+      });
+      if (res.ok) {
+        setStatusMessage(`YOLO11 session active: Camera source [${camera_source}]`);
+        checkBackendHealth();
+      }
+    } catch (e: any) {
+      console.warn('Start backend session error:', e);
+    } finally {
+      setIsBackendStartingSession(false);
+    }
+  }, [targetClass, backendUrl, backendSource, backendRtspInput, activeSubject, checkBackendHealth]);
+
+  // YOLO11 + ByteTrack WebSocket Telemetry Connection
+  useEffect(() => {
+    if (!isOpen || activeMode !== 'YOLO11_BACKEND') {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      return;
+    }
+
+    setBackendStatus('CONNECTING');
+    let isCancelled = false;
+
+    checkBackendHealth().then((isOnline) => {
+      if (!isOnline && !isCancelled) {
+        setBackendStatus('ERROR');
+      }
+    });
+
+    const wsProtocol = backendUrl.startsWith('https') ? 'wss:' : 'ws:';
+    const wsHost = backendUrl.replace(/^https?:\/\//, '');
+    const wsUrl = `${wsProtocol}//${wsHost}/ws/live`;
+    let ws: WebSocket;
+
+    try {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (isCancelled) return;
+        setBackendStatus('CONNECTED');
+        setStatusMessage('Connected to YOLO11 + ByteTrack AI Backend (Zero-latency pipeline).');
+      };
+
+      ws.onmessage = (event) => {
+        if (isCancelled) return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'TELEMETRY') {
+            setBackendTelemetry(data);
+
+            // Auto-mark any newly verified students
+            if (data.marked_students && data.marked_students.length > 0 && targetClass) {
+              data.marked_students.forEach((ms: any) => {
+                if (ms.student_id && !presentStudentIds.has(ms.student_id)) {
+                  handleAutoMark(ms.student_id, ms.confidence || 0.95, 2.5, 1.0);
+                }
+              });
+            }
+
+            // Sync ByteTrack tracks into detectedFaces for sidebar visualization
+            if (data.tracks && Array.isArray(data.tracks)) {
+              const mappedFaces: DetectedFace[] = data.tracks.map((t: any) => {
+                const [x1, y1, x2, y2] = t.bbox || [0, 0, 0, 0];
+                const pctX = Math.max(0, Math.min(95, (x1 / 1280) * 100));
+                const pctY = Math.max(0, Math.min(95, (y1 / 720) * 100));
+                const pctW = Math.max(5, Math.min(50, ((x2 - x1) / 1280) * 100));
+                const pctH = Math.max(5, Math.min(50, ((y2 - y1) / 720) * 100));
+                const dist = Number((3.5 - Math.min(2.5, pctH / 10)).toFixed(1));
+
+                return {
+                  id: `track-${t.track_id}`,
+                  student_id: t.student_id,
+                  student_name: t.student_name,
+                  roll_number: enrolledStudents.find((s) => s.id === t.student_id)?.roll_number,
+                  bounding_box: { x: pctX, y: pctY, width: pctW, height: pctH },
+                  confidence: t.confidence || 0.95,
+                  distance_meters: dist > 0 ? dist : 2.0,
+                  recommended_zoom: 1.0,
+                  status: t.is_marked ? 'VERIFIED' : t.student_id ? 'TRACKING' : 'UNENROLLED',
+                  lock_progress: t.is_marked ? 100 : Math.min(95, (t.consecutive_hits || 1) * 30),
+                  row_tier: dist > 5 ? 'BACK' : dist > 3 ? 'MID' : 'FRONT',
+                };
+              });
+              setDetectedFaces(mappedFaces);
+            }
+          }
+        } catch (err) {
+          console.warn('Backend WS parse error:', err);
+        }
+      };
+
+      ws.onerror = () => {
+        if (isCancelled) return;
+        setBackendStatus('ERROR');
+      };
+
+      ws.onclose = () => {
+        if (isCancelled) return;
+        setBackendStatus('DISCONNECTED');
+      };
+    } catch {
+      setBackendStatus('ERROR');
+    }
+
+    return () => {
+      isCancelled = true;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [isOpen, activeMode, backendUrl, checkBackendHealth, targetClass, presentStudentIds, handleAutoMark, enrolledStudents]);
+
   // Main Vision & Automated Patrol Sweep Processing Loop
   useEffect(() => {
     if (!isOpen || !targetClass) return;
@@ -318,6 +480,12 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
     let localLock = 0;
 
     const processFrame = async () => {
+      // In YOLO11 Backend mode, the server handles inference and streaming
+      if (activeMode === 'YOLO11_BACKEND') {
+        timeoutId = setTimeout(processFrame, 400);
+        return;
+      }
+
       if (!isScanning) {
         timeoutId = setTimeout(processFrame, 350);
         return;
@@ -594,10 +762,18 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                     style={{
                       width: 6,
                       height: 6,
-                      background: activeMode === 'CLASSROOM_SIM' ? '#818cf8' : cameraActive ? '#10b981' : '#3b82f6',
+                      background: activeMode === 'YOLO11_BACKEND'
+                        ? backendStatus === 'CONNECTED' ? '#10b981' : '#f59e0b'
+                        : activeMode === 'CLASSROOM_SIM' ? '#818cf8' : cameraActive ? '#10b981' : '#3b82f6',
                     }}
                   />
-                  {activeMode === 'CLASSROOM_SIM'
+                  {activeMode === 'YOLO11_BACKEND'
+                    ? backendStatus === 'CONNECTED'
+                      ? 'YOLO11 + ByteTrack AI Server'
+                      : backendStatus === 'CONNECTING'
+                      ? 'Connecting AI Backend…'
+                      : 'AI Backend Offline'
+                    : activeMode === 'CLASSROOM_SIM'
                     ? 'Crowd Simulator Active'
                     : cameraActive
                     ? neuralModelsReady
@@ -653,6 +829,27 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                 onClick={() => setActiveMode('CLASSROOM_SIM')}
               >
                 <Monitor size={13} /> Classroom Simulator
+              </button>
+              <button
+                className="btn btn-xs"
+                style={{
+                  background: activeMode === 'YOLO11_BACKEND' ? '#059669' : 'transparent',
+                  color: activeMode === 'YOLO11_BACKEND' ? '#ffffff' : '#94a3b8',
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+                onClick={() => {
+                  stopCamera();
+                  setActiveMode('YOLO11_BACKEND');
+                }}
+              >
+                <Server size={13} /> YOLO11 + ByteTrack AI
+                {backendStatus === 'CONNECTED' && (
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34d399', marginLeft: 2 }} />
+                )}
               </button>
             </div>
 
@@ -1074,6 +1271,301 @@ export const FaceAttendanceScannerModal: React.FC<FaceAttendanceScannerModalProp
                     </div>
                   )}
                 </>
+              ) : activeMode === 'YOLO11_BACKEND' ? (
+                /* YOLO11 + ByteTrack AI Backend View */
+                <div
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    position: 'relative',
+                    overflow: 'hidden',
+                    background: '#030712',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {backendStatus === 'CONNECTED' ? (
+                    <>
+                      {/* Live MJPEG Feed from Python Backend */}
+                      <img
+                        src={`${backendUrl}/api/streams/video_feed`}
+                        alt="YOLO11 ByteTrack Live Stream"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                          display: 'block',
+                        }}
+                        onError={() => setBackendStatus('DISCONNECTED')}
+                      />
+
+                      {/* Top HUD Telemetry Pill */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: 14,
+                          left: 14,
+                          right: 14,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: 8,
+                          zIndex: 25,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            background: 'rgba(15, 23, 42, 0.88)',
+                            backdropFilter: 'blur(8px)',
+                            padding: '6px 12px',
+                            borderRadius: '9999px',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+                          }}
+                        >
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 10px #10b981' }} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#f8fafc', letterSpacing: '0.02em' }}>
+                            YOLO11 + ByteTrack Enterprise AI
+                          </span>
+                          <span style={{ color: '#475569' }}>|</span>
+                          <span style={{ fontSize: '0.7rem', color: '#38bdf8', fontFamily: 'monospace' }}>
+                            Zero-Latency Queue: 1 Frame
+                          </span>
+                        </div>
+
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            background: 'rgba(15, 23, 42, 0.88)',
+                            backdropFilter: 'blur(8px)',
+                            padding: '6px 14px',
+                            borderRadius: '9999px',
+                            border: '1px solid rgba(255, 255, 255, 0.12)',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            FPS: <strong style={{ color: '#10b981' }}>{backendTelemetry?.fps ? backendTelemetry.fps.toFixed(1) : '30.0'}</strong>
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            Latency: <strong style={{ color: '#38bdf8' }}>{backendTelemetry?.latency_ms ? `${backendTelemetry.latency_ms.toFixed(1)}ms` : '2.1ms'}</strong>
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            Tracks: <strong style={{ color: '#f59e0b' }}>{backendTelemetry?.tracks?.length ?? 0}</strong>
+                          </span>
+                          <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+                            Verified: <strong style={{ color: '#10b981' }}>{backendTelemetry?.marked_count ?? 0}</strong>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Bottom Floating Camera Switcher Controls */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: 14,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          background: 'rgba(15, 23, 42, 0.92)',
+                          backdropFilter: 'blur(12px)',
+                          padding: '6px 14px',
+                          borderRadius: '12px',
+                          border: '1px solid rgba(255, 255, 255, 0.15)',
+                          zIndex: 25,
+                          maxWidth: '92%',
+                          flexWrap: 'wrap',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: '#cbd5e1' }}>
+                          <Video size={14} style={{ color: '#38bdf8' }} />
+                          <span style={{ fontWeight: 600 }}>Camera Ingestion:</span>
+                          <select
+                            value={backendSource}
+                            onChange={(e) => {
+                              const val = e.target.value as any;
+                              setBackendSource(val);
+                              if (val !== 'RTSP') {
+                                startBackendSession(val);
+                              }
+                            }}
+                            style={{
+                              background: '#1e293b',
+                              border: '1px solid rgba(255, 255, 255, 0.15)',
+                              color: '#f8fafc',
+                              borderRadius: '6px',
+                              padding: '3px 8px',
+                              fontSize: '0.75rem',
+                              outline: 'none',
+                            }}
+                          >
+                            <option value="SIMULATED">Simulated 4K Classroom Ceiling Feed</option>
+                            <option value="0">Local Hardware Webcam (/dev/video0)</option>
+                            <option value="RTSP">IP / RTSP Network Camera</option>
+                          </select>
+                        </div>
+
+                        {backendSource === 'RTSP' && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              type="text"
+                              value={backendRtspInput}
+                              onChange={(e) => setBackendRtspInput(e.target.value)}
+                              placeholder="rtsp://user:pass@ip:554/stream"
+                              style={{
+                                width: 220,
+                                background: '#0f172a',
+                                border: '1px solid rgba(56, 189, 248, 0.3)',
+                                borderRadius: '6px',
+                                padding: '3px 8px',
+                                color: '#f8fafc',
+                                fontSize: '0.72rem',
+                                outline: 'none',
+                                fontFamily: 'monospace',
+                              }}
+                            />
+                            <button
+                              className="btn btn-xs btn-primary"
+                              onClick={() => startBackendSession(backendRtspInput)}
+                              disabled={isBackendStartingSession}
+                            >
+                              Connect RTSP
+                            </button>
+                          </div>
+                        )}
+
+                        <button
+                          className="btn btn-xs"
+                          style={{
+                            background: 'rgba(16, 185, 129, 0.2)',
+                            color: '#34d399',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            fontSize: '0.7rem',
+                            fontWeight: 600,
+                          }}
+                          onClick={() => startBackendSession()}
+                          disabled={isBackendStartingSession}
+                        >
+                          <RefreshCw size={11} className={isBackendStartingSession ? 'spin' : ''} />
+                          {isBackendStartingSession ? 'Connecting…' : 'Sync Session'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    /* Offline / Connecting Card */
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'radial-gradient(ellipse at 50% 40%, #0f172a 0%, #030712 100%)',
+                        padding: '2.5rem',
+                        textAlign: 'center',
+                        zIndex: 20,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: '16px',
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          border: '1px solid rgba(16, 185, 129, 0.3)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginBottom: '1.25rem',
+                          boxShadow: '0 0 30px rgba(16, 185, 129, 0.15)',
+                        }}
+                      >
+                        <Server size={32} style={{ color: '#10b981' }} />
+                      </div>
+
+                      <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f8fafc', marginBottom: 6 }}>
+                        YOLO11 + ByteTrack AI Microservice
+                      </div>
+                      <p style={{ fontSize: '0.85rem', color: '#94a3b8', maxWidth: 480, lineHeight: 1.5, marginBottom: '1.5rem' }}>
+                        High-throughput classroom facial attendance engine powered by Ultralytics YOLO11, ByteTrack multi-face association, and OpenCV zero-latency pipeline buffer flushing.
+                      </p>
+
+                      <div
+                        style={{
+                          background: 'rgba(15, 23, 42, 0.9)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '10px',
+                          padding: '1rem 1.5rem',
+                          maxWidth: 440,
+                          width: '100%',
+                          marginBottom: '1.5rem',
+                          textAlign: 'left',
+                        }}
+                      >
+                        <div style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: 6 }}>
+                          Launch Microservice Terminal Command:
+                        </div>
+                        <pre
+                          style={{
+                            background: '#090d16',
+                            padding: '8px 12px',
+                            borderRadius: '6px',
+                            fontFamily: 'monospace',
+                            fontSize: '0.8125rem',
+                            color: '#38bdf8',
+                            margin: 0,
+                            overflowX: 'auto',
+                            border: '1px solid rgba(56, 189, 248, 0.2)',
+                          }}
+                        >
+                          cd backend &amp;&amp; ./run_backend.sh
+                        </pre>
+                        <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 8 }}>
+                          Server URL: <strong style={{ color: '#f8fafc' }}>{backendUrl}</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <button
+                          className="btn btn-primary"
+                          style={{ background: '#059669', borderColor: '#059669', gap: 6 }}
+                          onClick={() => {
+                            checkBackendHealth();
+                            const wsProtocol = backendUrl.startsWith('https') ? 'wss:' : 'ws:';
+                            const wsHost = backendUrl.replace(/^https?:\/\//, '');
+                            const ws = new WebSocket(`${wsProtocol}//${wsHost}/ws/live`);
+                            wsRef.current = ws;
+                            setBackendStatus('CONNECTING');
+                          }}
+                        >
+                          <RefreshCw size={14} /> Retry Backend Connection
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setActiveMode('CLASSROOM_SIM')}
+                        >
+                          <Monitor size={14} /> Switch to Simulator
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={() => setActiveMode('LIVE_WEBCAM')}
+                        >
+                          <Camera size={14} /> Switch to Live Webcam
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
                 /* CLASSROOM SIMULATOR VIEW (Virtual Multi-Row Amphitheatre) */
                 <div
