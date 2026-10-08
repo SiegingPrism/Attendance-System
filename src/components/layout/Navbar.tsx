@@ -9,12 +9,15 @@ import { CorrectionRequestModal } from '../student/CorrectionRequestModal';
 import { Badge } from '../common/Badge';
 import { calculateAttendanceMetrics } from '../../utils/attendanceCalc';
 import { ProgressBar } from '../common/ProgressBar';
+import { AppRoute } from '../../utils/router';
 
 interface NavbarProps {
   onOpenLiveSession?: () => void;
+  currentRoute?: AppRoute;
+  onNavigate?: (route: AppRoute) => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession, currentRoute, onNavigate }) => {
   const {
     currentRole,
     currentUser,
@@ -79,12 +82,34 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
       <header className="navbar">
         <div className="nav-content">
           {/* Brand */}
-          <div className="brand-section">
+          <div
+            className="brand-section"
+            style={{ cursor: onNavigate ? 'pointer' : 'default' }}
+            onClick={() => onNavigate && onNavigate('GATEWAY')}
+            title="Click to return to Portal Selection Gateway"
+          >
             <div className="brand-icon-wrapper">
               <QrCode size={17} />
             </div>
             <div>
-              <div className="brand-title">AttendPulse</div>
+              <div className="brand-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                AttendPulse
+                {currentRole === 'STUDENT' && (
+                  <span style={{ fontSize: '0.65rem', background: '#eff6ff', color: '#2563eb', padding: '1px 6px', borderRadius: '4px', border: '1px solid #bfdbfe', fontWeight: 700 }}>
+                    STUDENT
+                  </span>
+                )}
+                {currentRole === 'FACULTY' && (
+                  <span style={{ fontSize: '0.65rem', background: '#f0fdf4', color: '#16a34a', padding: '1px 6px', borderRadius: '4px', border: '1px solid #bbf7d0', fontWeight: 700 }}>
+                    FACULTY
+                  </span>
+                )}
+                {currentRole === 'ADMIN' && (
+                  <span style={{ fontSize: '0.65rem', background: '#f5f3ff', color: '#7c3aed', padding: '1px 6px', borderRadius: '4px', border: '1px solid #ddd6fe', fontWeight: 700 }}>
+                    ADMIN
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -112,6 +137,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
 
           {/* Role switcher */}
           <div className="role-switcher-container">
+            {onNavigate && (
+              <button
+                className="role-btn"
+                style={{ color: 'var(--gray-600)', fontWeight: 600 }}
+                onClick={() => {
+                  closeDropdown();
+                  onNavigate('GATEWAY');
+                }}
+                title="Return to Main Portal Selection Gateway"
+              >
+                ← Portals
+              </button>
+            )}
             {[
               { role: 'STUDENT' as const, label: 'Student', Icon: GraduationCap, userId: 'usr-stu-1' },
               { role: 'FACULTY' as const, label: 'Faculty', Icon: UserCheck, userId: 'usr-fac-1' },
@@ -123,7 +161,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenLiveSession }) => {
                 onClick={() => {
                   closeDropdown();
                   switchUser(role, userId);
+                  if (onNavigate) onNavigate(role);
                 }}
+                title={`Switch to ${label} Portal`}
               >
                 <Icon size={13} />
                 {label}
